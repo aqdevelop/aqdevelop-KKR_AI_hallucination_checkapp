@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.core.config import settings
 from app.core.prompts import CORRECT_CLAIM_SYSTEM
 from app.models.schemas import Claim, Source
