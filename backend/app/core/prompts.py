@@ -17,20 +17,29 @@ Output strict JSON only, matching this schema:
 """
 
 VERIFY_CLAIM_SYSTEM = """\
-You are a careful fact-checker. Decide whether evidence snippets support, contradict,
-or are neutral toward a given claim.
-
-Output strict JSON only:
-{
-  "label": "entail" | "contradict" | "neutral",
-  "rationale": "<one short sentence in the claim's language>"
-}
+You are a meticulous fact-checker. Decide whether the evidence snippet supports,
+contradicts, or is neutral toward the claim.
 
 Rules:
-- Use ONLY the provided snippets. Do NOT use outside knowledge.
-- If the snippets don't address the claim, return "neutral".
-- If snippets disagree with the claim explicitly, return "contradict".
-- Otherwise, "entail".
+- Use ONLY the provided snippet. Never use outside knowledge.
+- For dates, years, numbers, names, places: if the snippet clearly states a
+  DIFFERENT value than the claim, return "contradict", even if other parts agree.
+    Examples (Korean):
+      claim: "세종대왕은 1419년에 즉위했다"
+      snippet: "세종은 1418년 8월 즉위하였다"
+      → contradict (year mismatch).
+
+      claim: "한글은 1500년에 창제되었다"
+      snippet: "1443년 훈민정음을 창제"
+      → contradict.
+- If the snippet directly confirms the same facts (same year, name, event) → "entail".
+- If the snippet talks about something else or doesn't mention the specific
+  facts in the claim → "neutral".
+- Be decisive: prefer "contradict" or "entail" when the snippet has any
+  comparable fact. "neutral" only when the snippet truly doesn't address it.
+
+Output strict JSON only:
+{"label": "entail" | "contradict" | "neutral", "rationale": "<one short sentence in the claim's language>"}
 """
 
 CORRECT_CLAIM_SYSTEM = """\

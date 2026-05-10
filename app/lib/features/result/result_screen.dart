@@ -43,15 +43,22 @@ class _ResultBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _SummaryBar(summary: result.summary),
-        const Divider(height: 1),
+        _SummaryCard(summary: result.summary),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: HighlightedText(
-              text: result.originalText,
-              claims: result.claims,
-              onTapClaim: (claim) => _openClaim(context, claim),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: HighlightedText(
+                text: result.originalText,
+                claims: result.claims,
+                onTapClaim: (claim) => _openClaim(context, claim),
+              ),
             ),
           ),
         ),
@@ -65,41 +72,76 @@ class _ResultBody extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => ClaimDetailSheet(claim: claim),
     );
   }
 }
 
-class _SummaryBar extends StatelessWidget {
-  const _SummaryBar({required this.summary});
+class _SummaryCard extends StatelessWidget {
+  const _SummaryCard({required this.summary});
   final Summary summary;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            scheme.primary.withValues(alpha: 0.08),
+            scheme.primary.withValues(alpha: 0.02),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.15)),
+      ),
       child: Row(
         children: [
-          _Score(score: summary.trustScore),
-          const SizedBox(width: 16),
+          _ScoreCircle(score: summary.trustScore),
+          const SizedBox(width: 18),
           Expanded(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 6,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Badge(
-                  label: '확인 ${summary.supported}',
-                  color: VerdictColors.supported,
+                Text(
+                  '신뢰 점수',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: const Color(0xFF6B7280),
+                        fontSize: 12,
+                      ),
                 ),
-                _Badge(
-                  label: '의심 ${summary.refuted}',
-                  color: VerdictColors.refuted,
+                const SizedBox(height: 2),
+                Text(
+                  '주장 ${summary.total}개 분석됨',
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
-                _Badge(
-                  label: '불확실 ${summary.unverifiable}',
-                  color: VerdictColors.unverifiable,
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _Pill(
+                      count: summary.supported,
+                      label: '확인',
+                      color: VerdictColors.supported,
+                    ),
+                    _Pill(
+                      count: summary.refuted,
+                      label: '의심',
+                      color: VerdictColors.refuted,
+                    ),
+                    _Pill(
+                      count: summary.unverifiable,
+                      label: '불확실',
+                      color: VerdictColors.unverifiable,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -110,49 +152,84 @@ class _SummaryBar extends StatelessWidget {
   }
 }
 
-class _Score extends StatelessWidget {
-  const _Score({required this.score});
+class _ScoreCircle extends StatelessWidget {
+  const _ScoreCircle({required this.score});
   final double score;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      width: 64,
-      height: 64,
+      width: 76,
+      height: 76,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Theme.of(context).colorScheme.primaryContainer,
+        color: scheme.primary,
+        boxShadow: [
+          BoxShadow(
+            color: scheme.primary.withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Text(
-        score.toStringAsFixed(0),
-        style: TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.onPrimaryContainer,
-        ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            score.toStringAsFixed(0),
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            '/ 100',
+            style: TextStyle(fontSize: 10, color: Colors.white70),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _Badge extends StatelessWidget {
-  const _Badge({required this.label, required this.color});
+class _Pill extends StatelessWidget {
+  const _Pill({required this.count, required this.label, required this.color});
+  final int count;
   final String label;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.30)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$label $count',
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }

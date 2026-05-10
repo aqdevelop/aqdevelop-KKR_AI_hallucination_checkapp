@@ -40,7 +40,12 @@ class HighlightedText extends StatelessWidget {
     return SelectableText.rich(
       TextSpan(
         children: spans,
-        style: const TextStyle(fontSize: 16, height: 1.6, color: Colors.black87),
+        style: const TextStyle(
+          fontSize: 16,
+          height: 1.85,
+          color: Color(0xFF1F2937),
+          fontWeight: FontWeight.w400,
+        ),
       ),
     );
   }
@@ -53,12 +58,13 @@ class HighlightedText extends StatelessWidget {
       style: TextStyle(
         backgroundColor: bg,
         color: fg,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
         decoration: TextDecoration.underline,
         decorationStyle: claim.verdict == 'refuted'
             ? TextDecorationStyle.wavy
             : TextDecorationStyle.solid,
-        decorationColor: fg.withValues(alpha: 0.7),
+        decorationColor: fg.withValues(alpha: 0.6),
+        decorationThickness: 1.5,
       ),
       recognizer: TapGestureRecognizer()..onTap = () => onTapClaim(claim),
     );
