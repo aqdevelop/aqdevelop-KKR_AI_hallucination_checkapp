@@ -1,3 +1,5 @@
+import re
+
 import httpx
 
 from app.core.config import settings
@@ -7,6 +9,17 @@ from app.services import trust
 
 BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
 GOOGLE_URL = "https://www.googleapis.com/customsearch/v1"
+NAVER_URL = "https://openapi.naver.com/v1/search/webkr.json"
+
+_HTML_TAG = re.compile(r"<[^>]+>")
+_HTML_ENTITY = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'"}
+
+
+def _clean_html(s: str) -> str:
+    s = _HTML_TAG.sub("", s)
+    for k, v in _HTML_ENTITY.items():
+        s = s.replace(k, v)
+    return s.strip()
 
 
 async def search(query: str, language: str = "ko") -> list[Source]:
@@ -14,13 +27,45 @@ async def search(query: str, language: str = "ko") -> list[Source]:
         return _mock_sources(query)
 
     results: list[Source] = []
-    if settings.brave_search_api_key:
-        results = await _brave(query, language)
+
+    if language == "ko" and settings.naver_client_id and settings.naver_client_secret:
+        results = await _naver(query)
+
+    if len(results) < 3 and settings.brave_search_api_key:
+        results += await _brave(query, language)
 
     if language == "ko" and len(results) < 3 and settings.google_cse_api_key:
         results += await _google(query)
 
     return _dedupe(results)[: settings.search_results_per_query]
+
+
+async def _naver(query: str) -> list[Source]:
+    headers = {
+        "X-Naver-Client-Id": settings.naver_client_id,
+        "X-Naver-Client-Secret": settings.naver_client_secret,
+    }
+    params = {
+        "query": query,
+        "display": min(settings.search_results_per_query, 10),
+        "sort": "sim",
+    }
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        r = await client.get(NAVER_URL, headers=headers, params=params)
+        r.raise_for_status()
+        data = r.json()
+    out: list[Source] = []
+    for item in data.get("items", []):
+        url = item.get("link", "")
+        if not url:
+            continue
+        out.append(Source(
+            url=url,
+            title=_clean_html(item.get("title", "")),
+            snippet=_clean_html(item.get("description", "")),
+            trust=trust.score(url),
+        ))
+    return out
 
 
 async def _brave(query: str, language: str) -> list[Source]:

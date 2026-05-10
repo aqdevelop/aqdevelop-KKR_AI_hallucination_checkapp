@@ -7,13 +7,18 @@ class Settings(BaseSettings):
     mock_mode: bool = True
 
     anthropic_api_key: str = ""
+    gemini_api_key: str = ""
     brave_search_api_key: str = ""
     google_cse_api_key: str = ""
     google_cse_id: str = ""
+    naver_client_id: str = ""
+    naver_client_secret: str = ""
 
-    extractor_model: str = "claude-haiku-4-5-20251001"
-    verifier_model: str = "claude-sonnet-4-6"
-    corrector_model: str = "claude-sonnet-4-6"
+    # Models are routed by name prefix in services/llm.py:
+    #   claude-*  → Anthropic, gemini-* → Google Gemini
+    extractor_model: str = "gemini-2.5-flash"
+    verifier_model: str = "gemini-2.5-flash"
+    corrector_model: str = "gemini-2.5-flash"
 
     max_text_length: int = 5000
     search_results_per_query: int = 6
