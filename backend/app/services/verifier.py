@@ -21,9 +21,9 @@ async def verify(claim: Claim, sources: list[Source]) -> tuple[Verdict, float, l
     distinct_entail = len({s.url for label, s in zip(labels, sources) if label == "entail"})
 
     verdict: Verdict
-    if contradict > entail and contradict >= 0.6:
+    if contradict >= 0.5 and contradict > entail * 0.8:
         verdict = "refuted"
-    elif entail >= 1.2 and distinct_entail >= 2 and contradict < 0.3:
+    elif entail >= 0.7 and distinct_entail >= 1 and contradict < entail * 0.5:
         verdict = "supported"
     else:
         verdict = "unverifiable"

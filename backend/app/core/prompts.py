@@ -83,47 +83,57 @@ contradicts, or is neutral toward the claim.
 
 Use ONLY the provided snippet. Never use outside knowledge.
 
-A claim has multiple FACT COMPONENTS: subject (who), action (did what),
-object/target (to what), time (when), place (where), quantity (how many).
+A claim has CORE fact components (subject, action, object) and AUXILIARY
+components (time, place, quantity). The decision depends on which components
+the snippet addresses.
 
 Decision rules — apply in order:
 
 1. CONTRADICT — return "contradict" if the snippet states a value for any
-   fact component that is DIFFERENT from the claim's value for the same
-   component. Examples (Korean):
+   fact component that is CLEARLY DIFFERENT from the claim's value for the
+   same component. Examples (Korean):
      claim: "세종대왕은 1419년에 즉위했다"
      snippet: "세종은 1418년 8월 즉위하였다"
-     → contradict (year mismatch).
+     → contradict (year mismatch on a component the snippet explicitly addresses).
 
      claim: "김종서가 4군을 개척했다"
      snippet: "4군은 최윤덕 장군이 개척하였다"
-     → contradict (subject mismatch — snippet names a DIFFERENT person as
-       the actor for the same event).
+     → contradict (different actor for the same event).
 
      claim: "한글은 1500년에 창제되었다"
      snippet: "1443년 훈민정음을 창제"
      → contradict.
 
-2. ENTAIL — return "entail" ONLY if the snippet explicitly confirms ALL of
-   the claim's load-bearing fact components (subject, action, object, and
-   any specific number/year/place that appears in the claim). A partial
-   match is NOT entail.
-     claim: "김종서가 4군과 6진을 개척했다"
-     snippet: "김종서는 6진을 개척하여 두만강을 경계로 삼았다"
-     → neutral, NOT entail (snippet confirms 6진 but says nothing about 4군;
-       the claim asserts both, so it is not fully confirmed).
-
+2. ENTAIL — return "entail" when the snippet confirms the CORE components
+   (subject + action + object) of the claim, AND does not contradict any
+   auxiliary component explicitly mentioned in the claim. The snippet does
+   NOT need to repeat every auxiliary detail (year, place) — silence on an
+   auxiliary detail is fine, as long as the core action is confirmed.
      claim: "세종이 김종서를 파견했다"
      snippet: "세종은 김종서를 함경도로 보내 6진을 개척하게 하였다"
-     → entail (subject + action + object all confirmed).
+     → entail (core subject + action + object confirmed).
 
-3. NEUTRAL — return "neutral" if the snippet talks about something else, or
-   confirms only part of the claim without contradicting the rest, or
-   doesn't mention the specific fact components in the claim.
+     claim: "김종서가 6진을 개척했다"
+     snippet: "김종서는 두만강 일대에 6진을 설치하였다"
+     → entail (subject + action + object confirmed; "설치" and "개척" are
+       equivalent in this historical context).
 
-Be decisive on CONTRADICT when you see a different value for the same fact
-component, even if other parts of the claim happen to agree. Be strict on
-ENTAIL — when in doubt between entail and neutral, choose neutral.
+     claim: "이종무는 1419년에 쓰시마섬을 정벌했다"
+     snippet: "이종무가 쓰시마 정벌의 총대장으로 출정하였다"
+     → entail (core confirmed; year not contradicted, just not repeated).
+
+3. NEUTRAL — return "neutral" when the snippet talks about something else,
+   or only mentions the topic without confirming or denying the specific
+   action/subject the claim asserts.
+     claim: "김종서가 4군을 개척했다"
+     snippet: "4군 6진 개척은 조선 초기의 영토 확장 정책이다"
+     → neutral (topic is mentioned but specific actor is not stated).
+
+Important: prefer ENTAIL when the snippet confirms the core action even if
+auxiliary details aren't explicitly repeated. Prefer CONTRADICT when the
+snippet states a different value for any component the claim asserts.
+Reserve NEUTRAL for when the snippet truly doesn't address the claim's core
+assertion.
 
 Output strict JSON only:
 {"label": "entail" | "contradict" | "neutral", "rationale": "<one short sentence in the claim's language>"}
