@@ -26,7 +26,7 @@ async def extract(text: str) -> list[Claim]:
         model=settings.extractor_model,
         system=EXTRACT_CLAIMS_SYSTEM,
         user=text,
-        max_tokens=2048,
+        max_tokens=8192,
     )
     used: list[tuple[int, int]] = []
     claims: list[Claim] = []

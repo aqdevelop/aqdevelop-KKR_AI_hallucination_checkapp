@@ -34,10 +34,81 @@ def _get_gemini() -> Any:
 
 
 def _extract_json(text: str) -> dict[str, Any]:
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        first_nl = stripped.find("\n")
+        if first_nl != -1:
+            stripped = stripped[first_nl + 1 :]
+        if stripped.endswith("```"):
+            stripped = stripped[:-3]
+        stripped = stripped.strip()
+
+    start = stripped.find("{")
+    if start == -1:
         raise ValueError(f"No JSON object found in model output: {text[:200]}")
-    return json.loads(match.group(0))
+
+    try:
+        return json.loads(stripped[start:])
+    except json.JSONDecodeError:
+        pass
+
+    end = stripped.rfind("}")
+    if end > start:
+        try:
+            return json.loads(stripped[start : end + 1])
+        except json.JSONDecodeError:
+            pass
+
+    repaired = _repair_truncated_json(stripped[start:])
+    if repaired is not None:
+        return repaired
+
+    raise ValueError(
+        f"Could not parse JSON (possibly truncated by max_tokens). "
+        f"First 200 chars: {text[:200]}"
+    )
+
+
+def _repair_truncated_json(s: str) -> dict[str, Any] | None:
+    """Try to recover a usable JSON object from a response truncated mid-output.
+
+    Strategy: progressively trim trailing characters and close any open
+    structures ({, [, ", or an unfinished token) until json.loads succeeds.
+    """
+    for cutoff in range(len(s), 0, -1):
+        prefix = s[:cutoff]
+        in_string = False
+        escape = False
+        stack: list[str] = []
+        for ch in prefix:
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch in "{[":
+                stack.append(ch)
+            elif ch in "}]":
+                if stack and ((ch == "}" and stack[-1] == "{") or (ch == "]" and stack[-1] == "[")):
+                    stack.pop()
+
+        candidate = prefix
+        if in_string:
+            candidate += '"'
+        candidate = candidate.rstrip().rstrip(",")
+        for opener in reversed(stack):
+            candidate += "}" if opener == "{" else "]"
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+    return None
 
 
 async def _call_anthropic(model: str, system: str, user: str, max_tokens: int) -> str:
