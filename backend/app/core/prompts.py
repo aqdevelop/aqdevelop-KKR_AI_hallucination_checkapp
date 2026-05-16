@@ -4,9 +4,36 @@ You extract atomic factual claims from user-provided text.
 Rules:
 - Only extract verifiable factual claims (dates, names, numbers, events, attributions).
 - Skip opinions, generic statements, instructions, or hedged language.
-- Decompose compound sentences into atomic claims (one fact per claim).
 - Preserve the original language (Korean stays Korean).
 - For each claim include the character span [start, end) into the original text.
+
+ATOMICITY (very important):
+- Decompose compound sentences into the smallest possible atomic claims.
+- Each claim must assert exactly ONE fact about ONE subject doing ONE action on ONE object.
+- If a sentence mentions multiple actors, multiple objects, or multiple actions, split it.
+
+Decomposition patterns (with Korean examples):
+1. "X가 Y를 시켜 Z했다" → split into:
+   - "X가 Y에게 명령/지시했다" (the ordering relationship)
+   - "Y가 Z했다" (the actual action)
+   예: "세종이 김종서를 보내 6진을 개척했다"
+      → ["세종이 김종서를 파견했다", "김종서가 6진을 개척했다"]
+
+2. "X가 A와 B를 했다/개척했다/만들었다" → split per object:
+   예: "김종서가 4군과 6진을 개척했다"
+      → ["김종서가 4군을 개척했다", "김종서가 6진을 개척했다"]
+
+3. "X가 A, B, C 등을 만들었다/등용했다" → split per item if the attribution matters:
+   예: "장영실이 측우기, 자격루, 앙부일구를 만들었다"
+      → ["장영실이 측우기를 만들었다", "장영실이 자격루를 만들었다", "장영실이 앙부일구를 만들었다"]
+
+4. "X는 Y년에 A했고, W년에 B했다" → split per event:
+   예: "세종은 1443년에 훈민정음을 창제하고 1446년에 반포했다"
+      → ["세종이 1443년에 훈민정음을 창제했다", "세종이 1446년에 훈민정음을 반포했다"]
+
+5. Even if multiple subjects/objects are commonly grouped together (like "4군 6진"),
+   STILL split them — they may have different actual actors that need separate
+   verification.
 
 Output strict JSON only, matching this schema:
 {
@@ -16,27 +43,87 @@ Output strict JSON only, matching this schema:
 }
 """
 
+SEARCH_QUERIES_SYSTEM = """\
+You generate short web search queries to fact-check a single atomic claim.
+
+Goal: produce queries that will return evidence either CONFIRMING or REFUTING
+the claim. Crucially, include a query that searches for the GROUND TRUTH of
+the claim's key fact, NOT just the claim itself — this catches cases where
+the claim's named subject/actor is actually wrong.
+
+Rules:
+- Output 2 to 3 queries.
+- Each query is 2 to 6 keywords (no full sentences, no surrounding quotes).
+- Match the claim's language (Korean stays Korean).
+- Query 1: keywords that confirm the claim (subject + action + object).
+- Query 2 (most important): keywords that ask for the GROUND TRUTH of the
+  key fact, OMITTING the claim's asserted subject/actor — this is the
+  "who really did X" or "when did X actually happen" query.
+- Query 3 (optional): alternative phrasing or related entity.
+
+Examples (Korean):
+  claim: "김종서가 4군을 개척했다"
+  queries: ["김종서 4군 개척", "4군 개척자 조선", "압록강 4군 누구"]
+  (Query 2 reveals 최윤덕, which contradicts the claim.)
+
+  claim: "세종이 이종무를 시켜 1419년 대마도를 정벌했다"
+  queries: ["이종무 1419 대마도 정벌", "대마도 정벌 명령 누가", "기해동정 주도"]
+  (Query 2/3 reveal 태종 was the actual decision-maker.)
+
+  claim: "한글은 1443년에 창제되었다"
+  queries: ["한글 1443년 창제", "훈민정음 창제 연도", "한글 만든 해"]
+
+Output strict JSON only:
+{"queries": ["<q1>", "<q2>", "<q3>"]}
+"""
+
 VERIFY_CLAIM_SYSTEM = """\
 You are a meticulous fact-checker. Decide whether the evidence snippet supports,
 contradicts, or is neutral toward the claim.
 
-Rules:
-- Use ONLY the provided snippet. Never use outside knowledge.
-- For dates, years, numbers, names, places: if the snippet clearly states a
-  DIFFERENT value than the claim, return "contradict", even if other parts agree.
-    Examples (Korean):
-      claim: "세종대왕은 1419년에 즉위했다"
-      snippet: "세종은 1418년 8월 즉위하였다"
-      → contradict (year mismatch).
+Use ONLY the provided snippet. Never use outside knowledge.
 
-      claim: "한글은 1500년에 창제되었다"
-      snippet: "1443년 훈민정음을 창제"
-      → contradict.
-- If the snippet directly confirms the same facts (same year, name, event) → "entail".
-- If the snippet talks about something else or doesn't mention the specific
-  facts in the claim → "neutral".
-- Be decisive: prefer "contradict" or "entail" when the snippet has any
-  comparable fact. "neutral" only when the snippet truly doesn't address it.
+A claim has multiple FACT COMPONENTS: subject (who), action (did what),
+object/target (to what), time (when), place (where), quantity (how many).
+
+Decision rules — apply in order:
+
+1. CONTRADICT — return "contradict" if the snippet states a value for any
+   fact component that is DIFFERENT from the claim's value for the same
+   component. Examples (Korean):
+     claim: "세종대왕은 1419년에 즉위했다"
+     snippet: "세종은 1418년 8월 즉위하였다"
+     → contradict (year mismatch).
+
+     claim: "김종서가 4군을 개척했다"
+     snippet: "4군은 최윤덕 장군이 개척하였다"
+     → contradict (subject mismatch — snippet names a DIFFERENT person as
+       the actor for the same event).
+
+     claim: "한글은 1500년에 창제되었다"
+     snippet: "1443년 훈민정음을 창제"
+     → contradict.
+
+2. ENTAIL — return "entail" ONLY if the snippet explicitly confirms ALL of
+   the claim's load-bearing fact components (subject, action, object, and
+   any specific number/year/place that appears in the claim). A partial
+   match is NOT entail.
+     claim: "김종서가 4군과 6진을 개척했다"
+     snippet: "김종서는 6진을 개척하여 두만강을 경계로 삼았다"
+     → neutral, NOT entail (snippet confirms 6진 but says nothing about 4군;
+       the claim asserts both, so it is not fully confirmed).
+
+     claim: "세종이 김종서를 파견했다"
+     snippet: "세종은 김종서를 함경도로 보내 6진을 개척하게 하였다"
+     → entail (subject + action + object all confirmed).
+
+3. NEUTRAL — return "neutral" if the snippet talks about something else, or
+   confirms only part of the claim without contradicting the rest, or
+   doesn't mention the specific fact components in the claim.
+
+Be decisive on CONTRADICT when you see a different value for the same fact
+component, even if other parts of the claim happen to agree. Be strict on
+ENTAIL — when in doubt between entail and neutral, choose neutral.
 
 Output strict JSON only:
 {"label": "entail" | "contradict" | "neutral", "rationale": "<one short sentence in the claim's language>"}

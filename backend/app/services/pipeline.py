@@ -4,7 +4,7 @@ from app.core.config import settings
 from app.models.schemas import (
     Claim, FactCheckRequest, FactCheckResponse, Summary,
 )
-from app.services import extractor, search, verifier, corrector
+from app.services import extractor, search, verifier, corrector, query_gen
 from app.services.cache import MemoryCache
 
 
@@ -37,7 +37,18 @@ async def run(req: FactCheckRequest) -> FactCheckResponse:
 
 
 async def _verify_one(claim: Claim, language: str) -> None:
-    sources = await search.search(claim.text, language=language)
+    queries = await query_gen.generate(claim.text)
+    results = await asyncio.gather(*[search.search(q, language=language) for q in queries])
+    sources = []
+    seen: set[str] = set()
+    for batch in results:
+        for s in batch:
+            host = s.url.split("/")[2] if "://" in s.url else s.url
+            if host in seen:
+                continue
+            seen.add(host)
+            sources.append(s)
+    sources = sources[: settings.search_results_per_query * 2]
     verdict, confidence, used = await verifier.verify(claim, sources)
     claim.verdict = verdict
     claim.confidence = confidence
