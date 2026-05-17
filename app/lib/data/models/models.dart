@@ -5,6 +5,8 @@ class Span {
 
   factory Span.fromJson(Map<String, dynamic> json) =>
       Span(start: json['start'] as int, end: json['end'] as int);
+
+  Map<String, dynamic> toJson() => {'start': start, 'end': end};
 }
 
 class Source {
@@ -26,6 +28,13 @@ class Source {
         snippet: json['snippet'] as String? ?? '',
         trust: (json['trust'] as num?)?.toDouble() ?? 0.0,
       );
+
+  Map<String, dynamic> toJson() => {
+        'url': url,
+        'title': title,
+        'snippet': snippet,
+        'trust': trust,
+      };
 }
 
 class Claim {
@@ -58,6 +67,16 @@ class Claim {
             .toList(),
         suggestion: json['suggestion'] as String?,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'text': text,
+        'span': span.toJson(),
+        'verdict': verdict,
+        'confidence': confidence,
+        'sources': sources.map((s) => s.toJson()).toList(),
+        if (suggestion != null) 'suggestion': suggestion,
+      };
 }
 
 class Summary {
@@ -82,6 +101,14 @@ class Summary {
         unverifiable: json['unverifiable'] as int,
         trustScore: (json['trust_score'] as num?)?.toDouble() ?? 0.0,
       );
+
+  Map<String, dynamic> toJson() => {
+        'total': total,
+        'supported': supported,
+        'refuted': refuted,
+        'unverifiable': unverifiable,
+        'trust_score': trustScore,
+      };
 }
 
 class FactCheckResult {
@@ -106,4 +133,11 @@ class FactCheckResult {
         summary: Summary.fromJson(json['summary'] as Map<String, dynamic>),
         cached: json['cached'] as bool? ?? false,
       );
+
+  Map<String, dynamic> toJson() => {
+        'originalText': originalText,
+        'claims': claims.map((c) => c.toJson()).toList(),
+        'summary': summary.toJson(),
+        'cached': cached,
+      };
 }

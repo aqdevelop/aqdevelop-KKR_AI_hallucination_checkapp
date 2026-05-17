@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/auth_providers.dart';
 import '../../state/providers.dart';
+import '../history/history_screen.dart';
 import '../result/result_screen.dart';
 
 class InputScreen extends ConsumerStatefulWidget {
@@ -46,6 +47,15 @@ class _InputScreenState extends ConsumerState<InputScreen> {
       appBar: AppBar(
         title: const Text('FactLens'),
         actions: [
+          IconButton(
+            tooltip: '검사 기록',
+            icon: const Icon(Icons.history),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const HistoryScreen()),
+              );
+            },
+          ),
           PopupMenuButton<String>(
             tooltip: '계정',
             position: PopupMenuPosition.under,
