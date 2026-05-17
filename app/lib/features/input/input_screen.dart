@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../state/auth_providers.dart';
 import '../../state/providers.dart';
 import '../result/result_screen.dart';
 
@@ -38,10 +39,59 @@ class _InputScreenState extends ConsumerState<InputScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(checkControllerProvider);
+    final user = ref.watch(authStateProvider).valueOrNull;
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('할루시 체크')),
+      appBar: AppBar(
+        title: const Text('FactLens'),
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: '계정',
+            position: PopupMenuPosition.under,
+            onSelected: (v) async {
+              if (v == 'signout') {
+                await ref.read(authControllerProvider).signOut();
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                enabled: false,
+                child: Text(
+                  user?.email ?? '',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'signout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, size: 18),
+                    SizedBox(width: 8),
+                    Text('로그아웃'),
+                  ],
+                ),
+              ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: scheme.primary.withValues(alpha: 0.12),
+                child: Text(
+                  (user?.email ?? '?').substring(0, 1).toUpperCase(),
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -49,14 +99,14 @@ class _InputScreenState extends ConsumerState<InputScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'AI가 써준 글, 진짜인지\n색칠해드릴게요.',
+                'AI가 써준 대본,\n올리기 전에 확인하세요.',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       color: const Color(0xFF111827),
                     ),
               ),
               const SizedBox(height: 8),
               Text(
-                '문단을 붙여넣고 검사 시작을 누르면 사실 주장 단위로 쪼개서 인터넷에서 교차검증해요.',
+                '대본을 붙여넣으면 사실 주장 단위로 쪼개서 웹에서 교차검증하고, 의심 가는 구간을 색칠해 알려드려요.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: const Color(0xFF6B7280),
                     ),
@@ -85,7 +135,7 @@ class _InputScreenState extends ConsumerState<InputScreen> {
                     keyboardType: TextInputType.multiline,
                     style: Theme.of(context).textTheme.bodyLarge,
                     decoration: const InputDecoration.collapsed(
-                      hintText: 'AI가 써준 글을 여기에 붙여넣어 주세요…',
+                      hintText: 'AI가 써준 숏츠 대본을 여기에 붙여넣어 주세요…',
                     ),
                   ),
                 ),

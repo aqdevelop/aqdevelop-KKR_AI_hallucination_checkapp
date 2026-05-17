@@ -1,10 +1,14 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme.dart';
-import 'features/input/input_screen.dart';
+import 'features/auth/auth_gate.dart';
+import 'firebase_options.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const ProviderScope(child: FactCheckApp()));
 }
 
@@ -14,9 +18,9 @@ class FactCheckApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '할루시 체크',
+      title: 'FactLens',
       theme: buildTheme(),
-      home: const InputScreen(),
+      home: const AuthGate(),
       debugShowCheckedModeBanner: false,
     );
   }
