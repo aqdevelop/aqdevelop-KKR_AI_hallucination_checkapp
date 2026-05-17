@@ -46,8 +46,12 @@ async def _classify(claim_text: str, source: Source) -> str:
             max_tokens=256,
         )
         label = data.get("label", "neutral")
-        return label if label in ("entail", "contradict", "neutral") else "neutral"
-    except Exception:
+        rationale = data.get("rationale", "")
+        final = label if label in ("entail", "contradict", "neutral") else "neutral"
+        print(f"[VERIFY] {final:10} | claim='{claim_text[:40]}' | rationale='{rationale[:80]}'", flush=True)
+        return final
+    except Exception as e:
+        print(f"[VERIFY] ERROR(neutral) | claim='{claim_text[:40]}' | {type(e).__name__}: {str(e)[:120]}", flush=True)
         return "neutral"
 
 
