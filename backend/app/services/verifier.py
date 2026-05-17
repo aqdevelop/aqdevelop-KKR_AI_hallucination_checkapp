@@ -43,7 +43,7 @@ async def _classify(claim_text: str, source: Source) -> str:
             model=settings.verifier_model,
             system=VERIFY_CLAIM_SYSTEM,
             user=user,
-            max_tokens=256,
+            max_tokens=512,
         )
         label = data.get("label", "neutral")
         rationale = data.get("rationale", "")

@@ -140,6 +140,15 @@ async def _call_anthropic(model: str, system: str, user: str, max_tokens: int) -
 async def _call_gemini(model: str, system: str, user: str, max_tokens: int) -> str:
     client = _get_gemini()  # raises early if key missing, before importing SDK types
     from google.genai import types as genai_types
+    # gemini-2.5-flash defaults to thinking mode, which eats max_output_tokens
+    # budget before any visible output. Disable it so token budget is spent on
+    # the actual JSON response.
+    thinking_config = None
+    if model.startswith("gemini-2.5"):
+        try:
+            thinking_config = genai_types.ThinkingConfig(thinking_budget=0)
+        except Exception:
+            thinking_config = None
     resp = await client.aio.models.generate_content(
         model=model,
         contents=user,
@@ -147,6 +156,7 @@ async def _call_gemini(model: str, system: str, user: str, max_tokens: int) -> s
             system_instruction=system,
             response_mime_type="application/json",
             max_output_tokens=max_tokens,
+            thinking_config=thinking_config,
         ),
     )
     return resp.text or ""
