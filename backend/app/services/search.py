@@ -29,13 +29,22 @@ async def search(query: str, language: str = "ko") -> list[Source]:
     results: list[Source] = []
 
     if language == "ko" and settings.naver_client_id and settings.naver_client_secret:
-        results = await _naver(query)
+        try:
+            results = await _naver(query)
+        except Exception as e:
+            print(f"[SEARCH] naver failed for '{query[:40]}': {type(e).__name__}: {str(e)[:120]}", flush=True)
 
     if len(results) < 3 and settings.brave_search_api_key:
-        results += await _brave(query, language)
+        try:
+            results += await _brave(query, language)
+        except Exception as e:
+            print(f"[SEARCH] brave failed for '{query[:40]}': {type(e).__name__}: {str(e)[:120]}", flush=True)
 
     if language == "ko" and len(results) < 3 and settings.google_cse_api_key:
-        results += await _google(query)
+        try:
+            results += await _google(query)
+        except Exception as e:
+            print(f"[SEARCH] google failed for '{query[:40]}': {type(e).__name__}: {str(e)[:120]}", flush=True)
 
     return _dedupe(results)[: settings.search_results_per_query]
 
