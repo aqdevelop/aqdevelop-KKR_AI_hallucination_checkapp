@@ -35,7 +35,7 @@ class ClaimDetailSheet extends StatelessWidget {
         children: [
           ListView(
             controller: controller,
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, _canApply ? 110 : 32),
+            padding: EdgeInsets.fromLTRB(24, 12, 24, _canApply ? 110 : 32),
             children: [
               Center(
                 child: Container(
