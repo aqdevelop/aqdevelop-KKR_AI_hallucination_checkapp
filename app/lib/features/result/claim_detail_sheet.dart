@@ -3,10 +3,23 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme.dart';
 import '../../data/models/models.dart';
+import 'edited_result.dart';
 
 class ClaimDetailSheet extends StatelessWidget {
-  const ClaimDetailSheet({super.key, required this.claim});
+  const ClaimDetailSheet({
+    super.key,
+    required this.claim,
+    required this.isFixed,
+    this.onApply,
+    this.onUndo,
+  });
+
   final Claim claim;
+  final bool isFixed;
+  final VoidCallback? onApply;
+  final VoidCallback? onUndo;
+
+  bool get _canApply => EditedResult.canApply(claim);
 
   @override
   Widget build(BuildContext context) {
@@ -18,130 +31,240 @@ class ClaimDetailSheet extends StatelessWidget {
       initialChildSize: 0.65,
       maxChildSize: 0.95,
       minChildSize: 0.4,
-      builder: (_, controller) => ListView(
-        controller: controller,
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+      builder: (_, controller) => Stack(
         children: [
-          Center(
-            child: Container(
-              width: 44,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFD1D5DB),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Row(
+          ListView(
+            controller: controller,
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, _canApply ? 110 : 32),
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: BorderRadius.circular(999),
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD1D5DB),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: bg,
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      VerdictColors.label(claim.verdict),
-                      style: TextStyle(
-                        color: fg,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          VerdictColors.label(claim.verdict),
+                          style: TextStyle(
+                            color: fg,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '신뢰도 ${(claim.confidence * 100).toStringAsFixed(0)}%',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF6B7280),
+                          fontSize: 12,
+                        ),
+                  ),
+                  const Spacer(),
+                  if (isFixed)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: VerdictColors.supported.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: VerdictColors.supported.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle,
+                              size: 14, color: VerdictColors.supported),
+                          const SizedBox(width: 4),
+                          Text(
+                            '수정 적용됨',
+                            style: TextStyle(
+                              color: VerdictColors.supported,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                ],
+              ),
+              const SizedBox(height: 18),
+              const _SectionLabel(text: '주장'),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: Text(
+                  claim.text,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        decoration: isFixed ? TextDecoration.lineThrough : null,
+                        color: isFixed ? const Color(0xFF9CA3AF) : null,
+                      ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Text(
-                '신뢰도 ${(claim.confidence * 100).toStringAsFixed(0)}%',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF6B7280),
-                      fontSize: 12,
+              if (claim.suggestion != null && claim.suggestion!.trim().isNotEmpty) ...[
+                const SizedBox(height: 22),
+                _SectionLabel(
+                  text: isFixed ? '적용된 대체 문장' : '추천 대체 문장',
+                  icon: Icons.auto_awesome,
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: VerdictColors.supported.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: VerdictColors.supported.withValues(alpha: 0.25),
                     ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          _SectionLabel(text: '주장'),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF9FAFB),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-            ),
-            child: Text(
-              claim.text,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
                   ),
-            ),
-          ),
-          if (claim.suggestion != null) ...[
-            const SizedBox(height: 22),
-            _SectionLabel(text: '추천 대체 문장', icon: Icons.auto_awesome),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: VerdictColors.supported.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: VerdictColors.supported.withValues(alpha: 0.25),
+                  child: Text(
+                    claim.suggestion!,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: const Color(0xFF065F46),
+                        ),
+                  ),
                 ),
+              ],
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  const _SectionLabel(text: '근거 출처'),
+                  const SizedBox(width: 6),
+                  Text(
+                    '· ${claim.sources.length}개',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF9CA3AF),
+                          fontSize: 12,
+                        ),
+                  ),
+                ],
               ),
-              child: Text(
-                claim.suggestion!,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: const Color(0xFF065F46),
-                    ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              _SectionLabel(text: '근거 출처'),
-              const SizedBox(width: 6),
-              Text(
-                '· ${claim.sources.length}개',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF9CA3AF),
-                      fontSize: 12,
-                    ),
-              ),
+              const SizedBox(height: 8),
+              if (claim.sources.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF9FAFB),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    '출처를 찾지 못했습니다.',
+                    style: TextStyle(color: Color(0xFF9CA3AF)),
+                  ),
+                )
+              else
+                ...claim.sources.asMap().entries.map((e) => _SourceTile(
+                      index: e.key + 1,
+                      source: e.value,
+                    )),
             ],
           ),
-          const SizedBox(height: 8),
-          if (claim.sources.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF9FAFB),
-                borderRadius: BorderRadius.circular(12),
+          if (_canApply)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _ActionBar(
+                isFixed: isFixed,
+                onApply: () {
+                  Navigator.of(context).maybePop();
+                  onApply?.call();
+                },
+                onUndo: () {
+                  Navigator.of(context).maybePop();
+                  onUndo?.call();
+                },
               ),
-              child: const Text(
-                '출처를 찾지 못했습니다.',
-                style: TextStyle(color: Color(0xFF9CA3AF)),
-              ),
-            )
-          else
-            ...claim.sources.asMap().entries.map((e) => _SourceTile(
-                  index: e.key + 1,
-                  source: e.value,
-                )),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+class _ActionBar extends StatelessWidget {
+  const _ActionBar({
+    required this.isFixed,
+    required this.onApply,
+    required this.onUndo,
+  });
+
+  final bool isFixed;
+  final VoidCallback onApply;
+  final VoidCallback onUndo;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: const Border(
+          top: BorderSide(color: Color(0xFFE5E7EB)),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: isFixed
+            ? OutlinedButton.icon(
+                onPressed: onUndo,
+                icon: const Icon(Icons.undo, size: 18),
+                label: const Text('원래 표현으로 되돌리기'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  foregroundColor: const Color(0xFF374151),
+                  side: const BorderSide(color: Color(0xFFD1D5DB)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+              )
+            : FilledButton.icon(
+                onPressed: onApply,
+                icon: const Icon(Icons.auto_fix_high, size: 18),
+                label: const Text('이 표현으로 바꾸기'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
       ),
     );
   }

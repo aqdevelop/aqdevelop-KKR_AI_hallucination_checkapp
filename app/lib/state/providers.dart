@@ -5,6 +5,7 @@ import '../data/api/factcheck_api.dart';
 import '../data/api/mock_api.dart';
 import '../data/check_history_repository.dart';
 import '../data/models/models.dart';
+import '../features/result/edited_result.dart';
 import 'auth_providers.dart';
 
 const _useMock = bool.fromEnvironment('USE_MOCK', defaultValue: true);
@@ -64,3 +65,33 @@ final checkControllerProvider =
     StateNotifierProvider<CheckController, AsyncValue<FactCheckResult?>>(
   (ref) => CheckController(ref),
 );
+
+class EditedResultController extends StateNotifier<EditedResult?> {
+  EditedResultController(EditedResult? initial) : super(initial);
+
+  void applyFix(String id) {
+    if (state == null) return;
+    state = state!.applyFix(id);
+  }
+
+  void undoFix(String id) {
+    if (state == null) return;
+    state = state!.undoFix(id);
+  }
+
+  void applyAll() {
+    if (state == null) return;
+    state = state!.applyAll();
+  }
+
+  void undoAll() {
+    if (state == null) return;
+    state = state!.undoAll();
+  }
+}
+
+final editedResultProvider =
+    StateNotifierProvider.autoDispose<EditedResultController, EditedResult?>((ref) {
+  final base = ref.watch(checkControllerProvider).valueOrNull;
+  return EditedResultController(base == null ? null : EditedResult(base));
+});

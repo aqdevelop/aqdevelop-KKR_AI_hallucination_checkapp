@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
@@ -6,6 +7,7 @@ import '../../data/models/models.dart';
 import '../../state/providers.dart';
 import '../../widgets/highlighted_text.dart';
 import 'claim_detail_sheet.dart';
+import 'edited_result.dart';
 
 class ResultScreen extends ConsumerWidget {
   const ResultScreen({super.key});
@@ -13,15 +15,26 @@ class ResultScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(checkControllerProvider);
+    final edited = ref.watch(editedResultProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('검사 결과')),
+      appBar: AppBar(
+        title: const Text('검사 결과'),
+        actions: [
+          if (edited != null)
+            IconButton(
+              tooltip: '수정본 복사',
+              icon: const Icon(Icons.copy_all_outlined),
+              onPressed: () => _copy(context, edited.currentText),
+            ),
+        ],
+      ),
       body: state.when(
         data: (result) {
-          if (result == null) {
+          if (result == null || edited == null) {
             return const Center(child: Text('결과가 없습니다.'));
           }
-          return _ResultBody(result: result);
+          return _ResultBody(edited: edited);
         },
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -33,17 +46,34 @@ class ResultScreen extends ConsumerWidget {
       ),
     );
   }
+
+  void _copy(BuildContext context, String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('수정본을 클립보드에 복사했어요'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
 }
 
-class _ResultBody extends StatelessWidget {
-  const _ResultBody({required this.result});
-  final FactCheckResult result;
+class _ResultBody extends ConsumerWidget {
+  const _ResultBody({required this.edited});
+  final EditedResult edited;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Column(
       children: [
-        _SummaryCard(summary: result.summary),
+        _SummaryCard(summary: edited.base.summary),
+        if (edited.fixableCount > 0)
+          _FixActionBar(
+            pending: edited.pendingFixCount,
+            applied: edited.appliedCount,
+            onApplyAll: () => _applyAll(context, ref),
+            onUndoAll: () => _undoAll(context, ref),
+          ),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -55,9 +85,9 @@ class _ResultBody extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFE5E7EB)),
               ),
               child: HighlightedText(
-                text: result.originalText,
-                claims: result.claims,
-                onTapClaim: (claim) => _openClaim(context, claim),
+                text: edited.currentText,
+                claims: edited.currentClaims,
+                onTapClaim: (claim) => _openClaim(context, ref, claim),
               ),
             ),
           ),
@@ -66,7 +96,8 @@ class _ResultBody extends StatelessWidget {
     );
   }
 
-  void _openClaim(BuildContext context, Claim claim) {
+  void _openClaim(BuildContext context, WidgetRef ref, Claim claim) {
+    final controller = ref.read(editedResultProvider.notifier);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -74,7 +105,138 @@ class _ResultBody extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => ClaimDetailSheet(claim: claim),
+      builder: (sheetCtx) => Consumer(builder: (_, sheetRef, __) {
+        final live = sheetRef.watch(editedResultProvider);
+        final fixed = live?.isFixed(claim.id) ?? false;
+        return ClaimDetailSheet(
+          claim: claim,
+          isFixed: fixed,
+          onApply: () {
+            controller.applyFix(claim.id);
+            _showApplied(context, ref, claim.id);
+          },
+          onUndo: () => controller.undoFix(claim.id),
+        );
+      }),
+    );
+  }
+
+  void _showApplied(BuildContext context, WidgetRef ref, String claimId) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: const Text('수정이 적용됐어요'),
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: '되돌리기',
+          onPressed: () => ref.read(editedResultProvider.notifier).undoFix(claimId),
+        ),
+      ),
+    );
+  }
+
+  void _applyAll(BuildContext context, WidgetRef ref) {
+    final before = ref.read(editedResultProvider)?.appliedFixIds ?? const <String>{};
+    ref.read(editedResultProvider.notifier).applyAll();
+    final after = ref.read(editedResultProvider)?.appliedFixIds ?? const <String>{};
+    final added = after.length - before.length;
+    if (added <= 0) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('AI 추천 수정 $added건을 적용했어요'),
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: '모두 되돌리기',
+          onPressed: () => ref.read(editedResultProvider.notifier).undoAll(),
+        ),
+      ),
+    );
+  }
+
+  void _undoAll(BuildContext context, WidgetRef ref) {
+    ref.read(editedResultProvider.notifier).undoAll();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('원본으로 되돌렸어요'),
+        duration: Duration(seconds: 2),
+      ));
+  }
+}
+
+class _FixActionBar extends StatelessWidget {
+  const _FixActionBar({
+    required this.pending,
+    required this.applied,
+    required this.onApplyAll,
+    required this.onUndoAll,
+  });
+
+  final int pending;
+  final int applied;
+  final VoidCallback onApplyAll;
+  final VoidCallback onUndoAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.auto_fix_high, size: 16, color: scheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              applied > 0
+                  ? '수정 $applied건 적용됨${pending > 0 ? ' · 남은 추천 $pending건' : ''}'
+                  : 'AI 추천 수정 $pending건 있어요',
+              style: TextStyle(
+                color: scheme.primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+          if (applied > 0)
+            TextButton(
+              onPressed: onUndoAll,
+              style: TextButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                foregroundColor: const Color(0xFF6B7280),
+                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              child: const Text('원본'),
+            ),
+          if (pending > 0) ...[
+            const SizedBox(width: 4),
+            FilledButton(
+              onPressed: onApplyAll,
+              style: FilledButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              child: const Text('모두 적용'),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
