@@ -21,11 +21,12 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'REPLACE_ME_API_KEY',
-    authDomain: 'REPLACE_ME.firebaseapp.com',
-    projectId: 'REPLACE_ME',
-    storageBucket: 'REPLACE_ME.appspot.com',
-    messagingSenderId: 'REPLACE_ME',
-    appId: 'REPLACE_ME',
+    apiKey: 'AIzaSyBOh8TraMVFbJe7sJ5ujmks2K-vjPhx2FM',
+    authDomain: 'kkr-aihallucination-check-app.firebaseapp.com',
+    projectId: 'kkr-aihallucination-check-app',
+    storageBucket: 'kkr-aihallucination-check-app.firebasestorage.app',
+    messagingSenderId: '700600976729',
+    appId: '1:700600976729:web:72abdaf4f1e753f7907848',
+    measurementId: 'G-VLJG5YK0BH',
   );
 }
