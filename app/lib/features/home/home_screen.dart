@@ -93,29 +93,27 @@ class HomeScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             _SectionHeader(
               title: '최근 검사',
-              actionLabel: history.isEmpty ? null : '전체 보기',
-              onAction: history.isEmpty
-                  ? null
-                  : () => Navigator.of(context).push(
+              actionLabel: history.length > 4 ? '더보기 →' : null,
+              onAction: history.length > 4
+                  ? () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const HistoryScreen()),
-                      ),
+                      )
+                  : null,
             ),
             const SizedBox(height: 10),
             if (history.isEmpty)
               const _RecentEmpty()
             else
-              SizedBox(
-                height: 138,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: history.length > 8 ? 8 : history.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 10),
-                  itemBuilder: (_, i) => _RecentCard(
+              ...[
+                for (var i = 0; i < history.length && i < 4; i++) ...[
+                  _RecentCard(
                     item: history[i],
                     onTap: () => _openRecent(context, ref, history[i]),
                   ),
-                ),
-              ),
+                  if (i < (history.length > 4 ? 3 : history.length - 1))
+                    const SizedBox(height: 10),
+                ],
+              ],
           ],
         ),
       ),
@@ -185,18 +183,6 @@ class _StatsRow extends StatelessWidget {
             unit: '건',
             color: Theme.of(context).colorScheme.primary,
             icon: Icons.task_alt,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatCard(
-            label: '평균 신뢰점수',
-            value: stats.totalChecks == 0
-                ? '–'
-                : stats.avgTrustScore.toStringAsFixed(0),
-            unit: stats.totalChecks == 0 ? '' : '/100',
-            color: VerdictColors.supported,
-            icon: Icons.verified,
           ),
         ),
         const SizedBox(width: 10),
@@ -329,7 +315,7 @@ class _StartCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    '대본 검사 시작',
+                    '검사 시작',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 17,
@@ -399,87 +385,148 @@ class _RecentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final hasIssues = item.summary.refuted > 0;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        width: 240,
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFFE5E7EB)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: scheme.primary.withValues(alpha: 0.10),
-                  ),
-                  child: Text(
-                    item.summary.trustScore.toStringAsFixed(0),
-                    style: TextStyle(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (item.category != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3F4F6),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      item.category!,
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-              ],
+            _StatusBadge(
+              count: hasIssues ? item.summary.refuted : item.summary.supported,
+              isRefuted: hasIssues,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                item.preview,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF374151),
-                      fontSize: 12.5,
-                      height: 1.4,
-                    ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.preview,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFF111827),
+                          fontSize: 13.5,
+                          height: 1.45,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (item.category != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            item.category!,
+                            style: const TextStyle(
+                              color: Color(0xFF6B7280),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      _MiniDot(
+                          count: item.summary.supported,
+                          color: VerdictColors.supported),
+                      const SizedBox(width: 6),
+                      _MiniDot(
+                          count: item.summary.refuted,
+                          color: VerdictColors.refuted),
+                      const SizedBox(width: 6),
+                      _MiniDot(
+                          count: item.summary.unverifiable,
+                          color: VerdictColors.unverifiable),
+                      const Spacer(),
+                      Text(
+                        _relativeTime(item.createdAt),
+                        style: const TextStyle(
+                          color: Color(0xFF9CA3AF),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                _MiniDot(count: item.summary.supported, color: VerdictColors.supported),
-                const SizedBox(width: 6),
-                _MiniDot(count: item.summary.refuted, color: VerdictColors.refuted),
-                const SizedBox(width: 6),
-                _MiniDot(count: item.summary.unverifiable, color: VerdictColors.unverifiable),
-              ],
-            ),
+            const SizedBox(width: 2),
+            const Icon(Icons.chevron_right,
+                color: Color(0xFFD1D5DB), size: 20),
           ],
         ),
       ),
     );
   }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({required this.count, required this.isRefuted});
+  final int count;
+  final bool isRefuted;
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        isRefuted ? VerdictColors.refuted : VerdictColors.supported;
+    final label = isRefuted ? '의심' : '확인';
+    return Container(
+      width: 50,
+      height: 54,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '$count',
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 9,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _relativeTime(DateTime t) {
+  final diff = DateTime.now().difference(t);
+  if (diff.inSeconds < 60) return '방금';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
+  if (diff.inHours < 24) return '${diff.inHours}시간 전';
+  if (diff.inDays < 7) return '${diff.inDays}일 전';
+  return '${t.month}.${t.day.toString().padLeft(2, '0')}';
 }
 
 class _MiniDot extends StatelessWidget {
