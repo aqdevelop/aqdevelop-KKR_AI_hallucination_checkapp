@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../state/auth_providers.dart';
+import '../../data/check_history_repository.dart';
 import '../../state/providers.dart';
-import '../history/history_screen.dart';
 import '../result/result_screen.dart';
 
 class InputScreen extends ConsumerStatefulWidget {
@@ -15,12 +15,22 @@ class InputScreen extends ConsumerStatefulWidget {
 
 class _InputScreenState extends ConsumerState<InputScreen> {
   final _controller = TextEditingController();
+  String? _category;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onTextChanged);
+  }
 
   @override
   void dispose() {
+    _controller.removeListener(_onTextChanged);
     _controller.dispose();
     super.dispose();
   }
+
+  void _onTextChanged() => setState(() {});
 
   Future<void> _check() async {
     final text = _controller.text.trim();
@@ -30,78 +40,44 @@ class _InputScreenState extends ConsumerState<InputScreen> {
       );
       return;
     }
-    await ref.read(checkControllerProvider.notifier).run(text);
+    await ref
+        .read(checkControllerProvider.notifier)
+        .run(text, category: _category);
     if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const ResultScreen()),
     );
   }
 
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (!mounted) return;
+    if (text == null || text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('클립보드가 비어있어요.')),
+      );
+      return;
+    }
+    _controller.text = text;
+    _controller.selection =
+        TextSelection.collapsed(offset: _controller.text.length);
+  }
+
+  void _clear() {
+    _controller.clear();
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(checkControllerProvider);
-    final user = ref.watch(authStateProvider).valueOrNull;
     final scheme = Theme.of(context).colorScheme;
+    final length = _controller.text.length;
+    final hasText = length > 0;
+    final estSec = (length / 80).ceil().clamp(2, 60);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('FactLens'),
-        actions: [
-          IconButton(
-            tooltip: '검사 기록',
-            icon: const Icon(Icons.history),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const HistoryScreen()),
-              );
-            },
-          ),
-          PopupMenuButton<String>(
-            tooltip: '계정',
-            position: PopupMenuPosition.under,
-            onSelected: (v) async {
-              if (v == 'signout') {
-                await ref.read(authControllerProvider).signOut();
-              }
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                enabled: false,
-                child: Text(
-                  user?.email ?? '',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: 'signout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout, size: 18),
-                    SizedBox(width: 8),
-                    Text('로그아웃'),
-                  ],
-                ),
-              ),
-            ],
-            child: Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: CircleAvatar(
-                radius: 16,
-                backgroundColor: scheme.primary.withValues(alpha: 0.12),
-                child: Text(
-                  (user?.email ?? '?').substring(0, 1).toUpperCase(),
-                  style: TextStyle(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('대본 검사')),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
@@ -121,10 +97,14 @@ class _InputScreenState extends ConsumerState<InputScreen> {
                       color: const Color(0xFF6B7280),
                     ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              _CategoryChips(
+                value: _category,
+                onChanged: (v) => setState(() => _category = v),
+              ),
+              const SizedBox(height: 12),
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
@@ -137,16 +117,111 @@ class _InputScreenState extends ConsumerState<InputScreen> {
                       ),
                     ],
                   ),
-                  child: TextField(
-                    controller: _controller,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    keyboardType: TextInputType.multiline,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                    decoration: const InputDecoration.collapsed(
-                      hintText: 'AI가 써준 숏츠 대본을 여기에 붙여넣어 주세요…',
-                    ),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+                        child: Row(
+                          children: [
+                            TextButton.icon(
+                              onPressed: _pasteFromClipboard,
+                              icon: const Icon(Icons.content_paste, size: 16),
+                              label: const Text('붙여넣기'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: scheme.primary,
+                                minimumSize: Size.zero,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 6),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                textStyle: const TextStyle(
+                                    fontSize: 12, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            const Spacer(),
+                            if (hasText)
+                              TextButton.icon(
+                                onPressed: _clear,
+                                icon: const Icon(Icons.close, size: 16),
+                                label: const Text('지우기'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFF6B7280),
+                                  minimumSize: Size.zero,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 6),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  textStyle: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                          child: TextField(
+                            controller: _controller,
+                            maxLines: null,
+                            expands: true,
+                            textAlignVertical: TextAlignVertical.top,
+                            keyboardType: TextInputType.multiline,
+                            style: Theme.of(context).textTheme.bodyLarge,
+                            decoration: const InputDecoration.collapsed(
+                              hintText: 'AI가 써준 숏츠 대본을 여기에 붙여넣어 주세요…',
+                            ),
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding:
+                            const EdgeInsets.fromLTRB(16, 6, 16, 10),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            top: BorderSide(color: Color(0xFFF3F4F6)),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.text_fields,
+                                size: 13, color: Color(0xFF9CA3AF)),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$length자',
+                              style: const TextStyle(
+                                color: Color(0xFF6B7280),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Icon(Icons.schedule,
+                                size: 13, color: Color(0xFF9CA3AF)),
+                            const SizedBox(width: 4),
+                            Text(
+                              hasText ? '약 $estSec초 소요' : '대본을 입력해주세요',
+                              style: const TextStyle(
+                                color: Color(0xFF6B7280),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const Spacer(),
+                            if (length > 0 && length < 30)
+                              const Text(
+                                '30자 이상',
+                                style: TextStyle(
+                                  color: Color(0xFFE11D48),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -157,11 +232,12 @@ class _InputScreenState extends ConsumerState<InputScreen> {
                     ? const SizedBox(
                         width: 22,
                         height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.4, color: Colors.white),
                       )
                     : const Text('검사 시작'),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 '※ 결과는 참고용이며 100% 정확하지 않습니다.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -175,6 +251,57 @@ class _InputScreenState extends ConsumerState<InputScreen> {
         ),
       ),
       backgroundColor: scheme.surface,
+    );
+  }
+}
+
+class _CategoryChips extends StatelessWidget {
+  const _CategoryChips({required this.value, required this.onChanged});
+
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 32,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: checkCategories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (_, i) {
+          final c = checkCategories[i];
+          final selected = c == value;
+          return GestureDetector(
+            onTap: () => onChanged(selected ? null : c),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? scheme.primary.withValues(alpha: 0.10)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: selected
+                      ? scheme.primary.withValues(alpha: 0.55)
+                      : const Color(0xFFE5E7EB),
+                ),
+              ),
+              child: Text(
+                c,
+                style: TextStyle(
+                  color: selected ? scheme.primary : const Color(0xFF6B7280),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

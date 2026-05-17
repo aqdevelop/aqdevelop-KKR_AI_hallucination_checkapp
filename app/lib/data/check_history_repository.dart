@@ -2,18 +2,36 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'models/models.dart';
 
+const checkCategories = <String>['뉴스', '리뷰', '광고', 'SNS/숏츠', '기타'];
+
 class CheckHistoryItem {
   final String id;
   final String preview;
   final DateTime createdAt;
   final Summary summary;
+  final String? category;
 
   const CheckHistoryItem({
     required this.id,
     required this.preview,
     required this.createdAt,
     required this.summary,
+    this.category,
   });
+}
+
+class CheckStats {
+  final int totalChecks;
+  final int totalRefuted;
+  final double avgTrustScore;
+
+  const CheckStats({
+    required this.totalChecks,
+    required this.totalRefuted,
+    required this.avgTrustScore,
+  });
+
+  static const empty = CheckStats(totalChecks: 0, totalRefuted: 0, avgTrustScore: 0);
 }
 
 class CheckHistoryRepository {
@@ -21,22 +39,37 @@ class CheckHistoryRepository {
 
   final FirebaseFirestore _firestore;
 
-  CollectionReference<Map<String, dynamic>> _checksOf(String uid) =>
-      _firestore.collection('users').doc(uid).collection('checks');
+  DocumentReference<Map<String, dynamic>> _userDoc(String uid) =>
+      _firestore.collection('users').doc(uid);
 
-  Future<String> save(String uid, FactCheckResult result) async {
+  CollectionReference<Map<String, dynamic>> _checksOf(String uid) =>
+      _userDoc(uid).collection('checks');
+
+  Future<String> save(String uid, FactCheckResult result, {String? category}) async {
     final preview = result.originalText.length > 80
         ? '${result.originalText.substring(0, 80)}…'
         : result.originalText;
-    final doc = await _checksOf(uid).add({
+    final batch = _firestore.batch();
+    final newDoc = _checksOf(uid).doc();
+    batch.set(newDoc, {
       'preview': preview,
       'originalText': result.originalText,
       'summary': result.summary.toJson(),
       'claims': result.claims.map((c) => c.toJson()).toList(),
       'cached': result.cached,
+      if (category != null) 'category': category,
       'createdAt': FieldValue.serverTimestamp(),
     });
-    return doc.id;
+    batch.set(_userDoc(uid), {
+      'stats': {
+        'totalChecks': FieldValue.increment(1),
+        'totalRefuted': FieldValue.increment(result.summary.refuted),
+        'trustScoreSum': FieldValue.increment(result.summary.trustScore),
+      },
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await batch.commit();
+    return newDoc.id;
   }
 
   Stream<List<CheckHistoryItem>> watch(String uid) {
@@ -45,6 +78,23 @@ class CheckHistoryRepository {
         .limit(50)
         .snapshots()
         .map((snap) => snap.docs.map(_toItem).toList());
+  }
+
+  Stream<CheckStats> watchStats(String uid) {
+    return _userDoc(uid).snapshots().map((snap) {
+      final data = snap.data();
+      if (data == null) return CheckStats.empty;
+      final s = data['stats'] as Map<String, dynamic>?;
+      if (s == null) return CheckStats.empty;
+      final total = (s['totalChecks'] as num?)?.toInt() ?? 0;
+      final refuted = (s['totalRefuted'] as num?)?.toInt() ?? 0;
+      final trustSum = (s['trustScoreSum'] as num?)?.toDouble() ?? 0.0;
+      return CheckStats(
+        totalChecks: total,
+        totalRefuted: refuted,
+        avgTrustScore: total == 0 ? 0 : trustSum / total,
+      );
+    });
   }
 
   Future<FactCheckResult> load(String uid, String docId) async {
@@ -75,6 +125,7 @@ class CheckHistoryRepository {
       preview: d['preview'] as String? ?? '',
       createdAt: ts is Timestamp ? ts.toDate() : DateTime.now(),
       summary: Summary.fromJson(d['summary'] as Map<String, dynamic>),
+      category: d['category'] as String?,
     );
   }
 }

@@ -23,11 +23,17 @@ final checkHistoryProvider = StreamProvider.autoDispose<List<CheckHistoryItem>>(
   return ref.watch(checkHistoryRepoProvider).watch(user.uid);
 });
 
+final checkStatsProvider = StreamProvider.autoDispose<CheckStats>((ref) {
+  final user = ref.watch(authStateProvider).valueOrNull;
+  if (user == null) return Stream.value(CheckStats.empty);
+  return ref.watch(checkHistoryRepoProvider).watchStats(user.uid);
+});
+
 class CheckController extends StateNotifier<AsyncValue<FactCheckResult?>> {
   CheckController(this._ref) : super(const AsyncValue.data(null));
   final Ref _ref;
 
-  Future<void> run(String text) async {
+  Future<void> run(String text, {String? category}) async {
     state = const AsyncValue.loading();
     try {
       final result = _useMock
@@ -39,7 +45,7 @@ class CheckController extends StateNotifier<AsyncValue<FactCheckResult?>> {
         // fire-and-forget: don't block UI on history save
         _ref
             .read(checkHistoryRepoProvider)
-            .save(user.uid, result)
+            .save(user.uid, result, category: category)
             .catchError((_) => '');
       }
     } catch (e, st) {

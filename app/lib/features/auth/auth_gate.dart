@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/auth_providers.dart';
-import '../input/input_screen.dart';
+import '../../state/prefs_provider.dart';
+import '../home/home_screen.dart';
+import '../onboarding/onboarding_screen.dart';
 import 'login_screen.dart';
 
 class AuthGate extends ConsumerWidget {
@@ -11,8 +13,13 @@ class AuthGate extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authStateProvider);
+    final seenOnboarding = ref.watch(onboardingSeenProvider);
     return auth.when(
-      data: (user) => user == null ? const LoginScreen() : const InputScreen(),
+      data: (user) {
+        if (user == null) return const LoginScreen();
+        if (!seenOnboarding) return const OnboardingScreen();
+        return const HomeScreen();
+      },
       loading: () => const _Splash(),
       error: (_, __) => const LoginScreen(),
     );
