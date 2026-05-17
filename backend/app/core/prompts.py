@@ -135,7 +135,11 @@ snippet states a different value for any component the claim asserts.
 Reserve NEUTRAL for when the snippet truly doesn't address the claim's core
 assertion.
 
-Output strict JSON only:
+RESPONSE FORMAT (STRICT):
+- Output ONLY a JSON object. No preamble like "Here is the JSON".
+- No markdown code fences. No prose before or after.
+- Your response MUST start with `{` and end with `}`.
+
 {"label": "entail" | "contradict" | "neutral", "rationale": "<one short sentence in the claim's language>"}
 """
 

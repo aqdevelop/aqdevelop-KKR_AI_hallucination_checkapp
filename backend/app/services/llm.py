@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -8,6 +9,19 @@ from app.core.config import settings
 
 _anthropic: Any = None
 _gemini: Any = None
+_LLM_SEMAPHORE: asyncio.Semaphore | None = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _LLM_SEMAPHORE
+    if _LLM_SEMAPHORE is None:
+        _LLM_SEMAPHORE = asyncio.Semaphore(4)
+    return _LLM_SEMAPHORE
+
+
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    msg = str(exc)
+    return "429" in msg or "RESOURCE_EXHAUSTED" in msg or "rate" in msg.lower() or "quota" in msg.lower()
 
 
 def _get_anthropic() -> Any:
@@ -138,11 +152,27 @@ async def _call_gemini(model: str, system: str, user: str, max_tokens: int) -> s
     return resp.text or ""
 
 
+async def _call_with_retry(call, model: str, system: str, user: str, max_tokens: int) -> str:
+    delay = 4.0
+    for attempt in range(4):
+        try:
+            return await call(model, system, user, max_tokens)
+        except Exception as exc:
+            if _is_rate_limit_error(exc) and attempt < 3:
+                await asyncio.sleep(delay)
+                delay *= 2
+                continue
+            raise
+
+
 async def call_json(model: str, system: str, user: str, max_tokens: int = 1024) -> dict[str, Any]:
     """Call the LLM matching the model name prefix and parse JSON.
 
     claude-*  → Anthropic
     gemini-*  → Google Gemini
+
+    Concurrency is bounded by a module-level semaphore to avoid 429s on
+    free-tier quotas. Rate-limit errors are retried with exponential backoff.
     """
     if model.startswith("claude-"):
         call = _call_anthropic
@@ -151,14 +181,16 @@ async def call_json(model: str, system: str, user: str, max_tokens: int = 1024) 
     else:
         raise ValueError(f"Unknown model provider for: {model!r}")
 
-    text = await call(model, system, user, max_tokens)
-    try:
-        return _extract_json(text)
-    except (ValueError, json.JSONDecodeError):
-        retry_text = await call(
-            model,
-            system + "\n\nReturn STRICT valid JSON only. No prose, no markdown.",
-            user,
-            max_tokens,
-        )
-        return _extract_json(retry_text)
+    async with _get_semaphore():
+        text = await _call_with_retry(call, model, system, user, max_tokens)
+        try:
+            return _extract_json(text)
+        except (ValueError, json.JSONDecodeError):
+            retry_text = await _call_with_retry(
+                call,
+                model,
+                system + "\n\nReturn STRICT valid JSON only. No prose, no markdown. Start your response with { and end with }.",
+                user,
+                max_tokens,
+            )
+            return _extract_json(retry_text)
