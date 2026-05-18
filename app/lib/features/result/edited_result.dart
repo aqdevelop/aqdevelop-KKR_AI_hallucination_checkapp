@@ -21,18 +21,20 @@ class EditedResult {
   final Set<String> appliedFixIds;
   final String currentText;
   final List<RenderedClaim> currentClaims;
+  final List<RenderedClaim> originalClaims;
 
   EditedResult._(
     this.base,
     this.appliedFixIds,
     this.currentText,
     this.currentClaims,
+    this.originalClaims,
   );
 
   factory EditedResult(FactCheckResult base, [Set<String>? applied]) {
     final ids = applied ?? const <String>{};
-    final (text, claims) = _compute(base, ids);
-    return EditedResult._(base, ids, text, claims);
+    final (text, current, original) = _compute(base, ids);
+    return EditedResult._(base, ids, text, current, original);
   }
 
   EditedResult applyFix(String claimId) {
@@ -47,9 +49,7 @@ class EditedResult {
   }
 
   EditedResult applyAll() {
-    final ids = base.claims
-        .where(_isFixable)
-        .map((c) => c.id);
+    final ids = base.claims.where(_isFixable).map((c) => c.id);
     return EditedResult(base, {...appliedFixIds, ...ids});
   }
 
@@ -66,6 +66,10 @@ class EditedResult {
 
   bool get hasAnyEdits => appliedFixIds.isNotEmpty;
 
+  /// Only fixed claims, with spans positioned inside [currentText].
+  List<RenderedClaim> get appliedClaimsInCurrent =>
+      currentClaims.where((c) => c.fixed).toList(growable: false);
+
   static bool canApply(Claim c) =>
       c.suggestion != null &&
       c.suggestion!.trim().isNotEmpty &&
@@ -73,7 +77,7 @@ class EditedResult {
 
   static bool _isFixable(Claim c) => canApply(c);
 
-  static (String, List<RenderedClaim>) _compute(
+  static (String, List<RenderedClaim>, List<RenderedClaim>) _compute(
     FactCheckResult base,
     Set<String> appliedIds,
   ) {
@@ -81,7 +85,8 @@ class EditedResult {
     final sorted = [...base.claims]..sort((a, b) => a.span.start.compareTo(b.span.start));
 
     final buffer = StringBuffer();
-    final rendered = <RenderedClaim>[];
+    final current = <RenderedClaim>[];
+    final original = <RenderedClaim>[];
     var origCursor = 0;
     var newCursor = 0;
 
@@ -96,16 +101,20 @@ class EditedResult {
         newCursor += between.length;
       }
 
-      final shouldApply =
-          appliedIds.contains(claim.id) && canApply(claim);
-      final content = shouldApply
-          ? claim.suggestion!
-          : text.substring(start, end);
+      final shouldApply = appliedIds.contains(claim.id) && canApply(claim);
+      final content =
+          shouldApply ? claim.suggestion! : text.substring(start, end);
       buffer.write(content);
-      rendered.add(RenderedClaim(
+      current.add(RenderedClaim(
         original: claim,
         start: newCursor,
         end: newCursor + content.length,
+        fixed: shouldApply,
+      ));
+      original.add(RenderedClaim(
+        original: claim,
+        start: start,
+        end: end,
         fixed: shouldApply,
       ));
       newCursor += content.length;
@@ -116,6 +125,6 @@ class EditedResult {
       buffer.write(text.substring(origCursor));
     }
 
-    return (buffer.toString(), rendered);
+    return (buffer.toString(), current, original);
   }
 }

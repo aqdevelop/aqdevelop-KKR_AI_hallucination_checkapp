@@ -77,23 +77,43 @@ class _ResultBody extends ConsumerWidget {
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
-              ),
-              child: HighlightedText(
-                text: edited.currentText,
-                claims: edited.currentClaims,
-                onTapClaim: (claim) => _openClaim(context, ref, claim),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _OriginalPanel(
+                  text: edited.base.originalText,
+                  claims: edited.originalClaims,
+                  hasEdits: edited.hasAnyEdits,
+                  onTapClaim: (c) => _openClaim(context, ref, c),
+                ),
+                if (edited.hasAnyEdits) ...[
+                  const SizedBox(height: 16),
+                  _CorrectedPanel(
+                    text: edited.currentText,
+                    claims: edited.appliedClaimsInCurrent,
+                    appliedCount: edited.appliedCount,
+                    onTapClaim: (c) => _openClaim(context, ref, c),
+                    onCopy: () => _copyText(context, edited.currentText),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
       ],
     );
+  }
+
+  void _copyText(BuildContext context, String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('수정본을 클립보드에 복사했어요'),
+          duration: Duration(seconds: 2),
+        ),
+      );
   }
 
   void _openClaim(BuildContext context, WidgetRef ref, Claim claim) {
@@ -164,6 +184,206 @@ class _ResultBody extends ConsumerWidget {
         content: Text('원본으로 되돌렸어요'),
         duration: Duration(seconds: 2),
       ));
+  }
+}
+
+class _OriginalPanel extends StatelessWidget {
+  const _OriginalPanel({
+    required this.text,
+    required this.claims,
+    required this.hasEdits,
+    required this.onTapClaim,
+  });
+
+  final String text;
+  final List<RenderedClaim> claims;
+  final bool hasEdits;
+  final ValueChanged<Claim> onTapClaim;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    '원본',
+                    style: TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+                if (hasEdits) ...[
+                  const SizedBox(width: 8),
+                  const Text(
+                    '아래에 수정된 글이 따로 있어요',
+                    style: TextStyle(
+                      color: Color(0xFF9CA3AF),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: HighlightedText(
+              text: text,
+              claims: claims,
+              onTapClaim: onTapClaim,
+              mode: HighlightMode.original,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CorrectedPanel extends StatelessWidget {
+  const _CorrectedPanel({
+    required this.text,
+    required this.claims,
+    required this.appliedCount,
+    required this.onTapClaim,
+    required this.onCopy,
+  });
+
+  final String text;
+  final List<RenderedClaim> claims;
+  final int appliedCount;
+  final ValueChanged<Claim> onTapClaim;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            scheme.primary.withValues(alpha: 0.06),
+            scheme.primary.withValues(alpha: 0.02),
+          ],
+        ),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.30)),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.primary.withValues(alpha: 0.10),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+            decoration: BoxDecoration(
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+              color: scheme.primary.withValues(alpha: 0.10),
+              border: Border(
+                bottom: BorderSide(
+                  color: scheme.primary.withValues(alpha: 0.20),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: scheme.primary,
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: scheme.primary.withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.auto_fix_high,
+                      color: Colors.white, size: 16),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'AI 수정 적용된 글',
+                        style: TextStyle(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14.5,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$appliedCount건의 추천 수정을 반영한 최종 글이에요',
+                        style: TextStyle(
+                          color: scheme.primary.withValues(alpha: 0.75),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: '복사',
+                  icon: const Icon(Icons.copy_all_outlined, size: 18),
+                  color: scheme.primary,
+                  onPressed: onCopy,
+                ),
+              ],
+            ),
+          ),
+          // Body
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: HighlightedText(
+              text: text,
+              claims: claims,
+              onTapClaim: onTapClaim,
+              mode: HighlightMode.corrected,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
