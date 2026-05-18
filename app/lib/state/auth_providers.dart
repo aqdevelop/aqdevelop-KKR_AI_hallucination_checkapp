@@ -16,8 +16,16 @@ class AuthController {
     await _auth.signInWithEmailAndPassword(email: email.trim(), password: password);
   }
 
-  Future<void> signUp(String email, String password) async {
-    await _auth.createUserWithEmailAndPassword(email: email.trim(), password: password);
+  Future<void> signUp(String email, String password, {String? displayName}) async {
+    final cred = await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    final name = displayName?.trim();
+    if (name != null && name.isNotEmpty) {
+      await cred.user?.updateDisplayName(name);
+      await cred.user?.reload();
+    }
   }
 
   Future<void> sendPasswordReset(String email) async {

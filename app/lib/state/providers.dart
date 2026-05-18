@@ -8,7 +8,7 @@ import '../data/models/models.dart';
 import '../features/result/edited_result.dart';
 import 'auth_providers.dart';
 
-const _useMock = bool.fromEnvironment('USE_MOCK', defaultValue: true);
+const _useMock = bool.fromEnvironment('USE_MOCK', defaultValue: false);
 
 final factCheckApiProvider = Provider<FactCheckApi>((ref) => FactCheckApi());
 final mockApiProvider = Provider<MockFactCheckApi>((ref) => MockFactCheckApi());

@@ -13,6 +13,7 @@ class SignupScreen extends ConsumerStatefulWidget {
 
 class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
@@ -22,6 +23,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
@@ -35,6 +37,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       await ref.read(authControllerProvider).signUp(
             _emailController.text,
             _passwordController.text,
+            displayName: _nameController.text,
           );
       if (!mounted) return;
       // AuthGate routes automatically; just pop back to root so the gate takes over.
@@ -60,6 +63,20 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _Field(
+              controller: _nameController,
+              label: '사용자 이름',
+              hint: '예: 이아람',
+              keyboardType: TextInputType.name,
+              validator: (v) {
+                final t = v?.trim() ?? '';
+                if (t.isEmpty) return '사용자 이름을 입력해주세요.';
+                if (t.length < 2) return '2자 이상으로 입력해주세요.';
+                if (t.length > 20) return '20자 이내로 입력해주세요.';
+                return null;
+              },
+            ),
+            const SizedBox(height: 14),
             _Field(
               controller: _emailController,
               label: '이메일',

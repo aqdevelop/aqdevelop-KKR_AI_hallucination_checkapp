@@ -44,8 +44,29 @@ class HomeScreen extends ConsumerWidget {
             itemBuilder: (_) => [
               PopupMenuItem(
                 enabled: false,
-                child: Text(user?.email ?? '',
-                    style: Theme.of(context).textTheme.bodyMedium),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if ((user?.displayName?.trim().isNotEmpty ?? false))
+                      Text(
+                        user!.displayName!,
+                        style: const TextStyle(
+                          color: Color(0xFF111827),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    Text(
+                      user?.email ?? '',
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const PopupMenuDivider(),
               const PopupMenuItem(
@@ -61,17 +82,10 @@ class HomeScreen extends ConsumerWidget {
             ],
             child: Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: CircleAvatar(
-                radius: 16,
-                backgroundColor: scheme.primary.withValues(alpha: 0.12),
-                child: Text(
-                  (user?.email ?? '?').substring(0, 1).toUpperCase(),
-                  style: TextStyle(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
+              child: Icon(
+                Icons.account_circle,
+                size: 32,
+                color: scheme.primary.withValues(alpha: 0.85),
               ),
             ),
           ),
