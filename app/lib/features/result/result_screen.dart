@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/tokens.dart';
 import '../../data/models/models.dart';
@@ -68,6 +69,8 @@ class _ResultBody extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
       children: [
         _ReportHeader(result: edited.base),
+        const SizedBox(height: 12),
+        _ExecutiveSummary(result: edited.base),
         if (edited.fixableCount > 0) ...[
           const SizedBox(height: 12),
           _FixActionBar(
@@ -94,7 +97,18 @@ class _ResultBody extends ConsumerWidget {
             onCopy: () => _copyText(context, edited.currentText),
           ),
         ],
-        const SizedBox(height: 20),
+        if (edited.base.claims.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _ClaimBreakdown(
+            claims: edited.base.claims,
+            onTapClaim: (c) => _openClaim(context, ref, c),
+          ),
+        ],
+        const SizedBox(height: 16),
+        _SourceIndex(claims: edited.base.claims),
+        const SizedBox(height: 16),
+        _Methodology(result: edited.base),
+        const SizedBox(height: 16),
         const _Disclaimer(),
       ],
     );
@@ -587,6 +601,437 @@ class _DocPanel extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Executive summary
+// ─────────────────────────────────────────────────────────────────────────
+
+class _ExecutiveSummary extends StatelessWidget {
+  const _ExecutiveSummary({required this.result});
+  final FactCheckResult result;
+
+  ({String label, Color color}) get _risk {
+    final s = result.summary;
+    if (s.refuted > 0) return (label: '높음', color: AppColors.disputed);
+    if (s.unverifiable > s.supported) {
+      return (label: '중간', color: AppColors.unverifiable);
+    }
+    return (label: '낮음', color: AppColors.verified);
+  }
+
+  String _summaryText() {
+    final s = result.summary;
+    if (s.total == 0) return '분석할 사실 주장을 찾지 못했습니다.';
+    final buf = StringBuffer('총 ${s.total}개의 사실 주장을 분석했습니다. ');
+    if (s.refuted > 0) {
+      buf.write('이 중 ${s.refuted}개가 근거와 충돌해 반박됐습니다. ');
+      final refuted = result.claims.where((c) => c.verdict == 'refuted').toList()
+        ..sort((a, b) => b.confidence.compareTo(a.confidence));
+      if (refuted.isNotEmpty) {
+        buf.write('특히 "${_shorten(refuted.first.text)}" 부분을 우선 재검토하세요.');
+      }
+    } else if (s.unverifiable > 0) {
+      buf.write('명백한 오류는 발견되지 않았으나 ${s.unverifiable}개 주장은 '
+          '충분한 근거를 찾지 못해 검증되지 않았습니다.');
+    } else {
+      buf.write('분석된 주요 주장이 모두 근거와 일치하는 것으로 확인됐습니다.');
+    }
+    return buf.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final risk = _risk;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.ink200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            child: Row(
+              children: [
+                Text('SUMMARY', style: AppText.overline(color: AppColors.ink400)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: risk.color.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(AppRadius.small),
+                    border: Border.all(color: risk.color.withValues(alpha: 0.30)),
+                  ),
+                  child: Text('위험도 ${risk.label}',
+                      style: AppText.mono(size: 10, color: risk.color, weight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Text(
+              _summaryText(),
+              style: AppText.sans(size: 14, color: AppColors.ink800, height: 1.65, weight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Claim-by-claim breakdown
+// ─────────────────────────────────────────────────────────────────────────
+
+class _ClaimBreakdown extends StatelessWidget {
+  const _ClaimBreakdown({required this.claims, required this.onTapClaim});
+  final List<Claim> claims;
+  final ValueChanged<Claim> onTapClaim;
+
+  @override
+  Widget build(BuildContext context) {
+    final ordered = [...claims]..sort((a, b) => a.span.start.compareTo(b.span.start));
+    return _Section(
+      label: '주장별 분석',
+      labelEn: 'CLAIM BREAKDOWN',
+      trailing: Text('${claims.length}건', style: AppText.mono(size: 10, color: AppColors.ink400)),
+      child: Column(
+        children: [
+          for (var i = 0; i < ordered.length; i++) ...[
+            if (i > 0) const Divider(height: 1),
+            _ClaimRow(index: i + 1, claim: ordered[i], onTap: () => onTapClaim(ordered[i])),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ClaimRow extends StatelessWidget {
+  const _ClaimRow({required this.index, required this.claim, required this.onTap});
+  final int index;
+  final Claim claim;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = Verdict.fg(claim.verdict);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Verdict.bg(claim.verdict),
+                borderRadius: BorderRadius.circular(AppRadius.small),
+              ),
+              child: Text(Verdict.marker(claim.verdict),
+                  style: AppText.mono(size: 11, color: fg, weight: FontWeight.w700)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(Verdict.label(claim.verdict),
+                          style: AppText.sans(size: 12, weight: FontWeight.w700, color: fg)),
+                      const SizedBox(width: 8),
+                      Text('신뢰도 ${(claim.confidence * 100).toStringAsFixed(0)}%',
+                          style: AppText.mono(size: 10, color: AppColors.ink400)),
+                      const Spacer(),
+                      if (claim.sources.isNotEmpty)
+                        Text('출처 ${claim.sources.length}',
+                            style: AppText.mono(size: 10, color: AppColors.ink400)),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Text(claim.text,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.sans(size: 13, color: AppColors.ink800, height: 1.4)),
+                  const SizedBox(height: 7),
+                  _ConfidenceBar(value: claim.confidence, color: fg),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.ink300),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ConfidenceBar extends StatelessWidget {
+  const _ConfidenceBar({required this.value, required this.color});
+  final double value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(2),
+      child: Stack(
+        children: [
+          Container(height: 3, color: AppColors.ink100),
+          FractionallySizedBox(
+            widthFactor: value.clamp(0, 1).toDouble(),
+            child: Container(height: 3, color: color.withValues(alpha: 0.7)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Source index (consolidated references)
+// ─────────────────────────────────────────────────────────────────────────
+
+class _SourceIndex extends StatelessWidget {
+  const _SourceIndex({required this.claims});
+  final List<Claim> claims;
+
+  List<Source> get _unique {
+    final byUrl = <String, Source>{};
+    for (final c in claims) {
+      for (final s in c.sources) {
+        final existing = byUrl[s.url];
+        if (existing == null || s.trust > existing.trust) byUrl[s.url] = s;
+      }
+    }
+    final list = byUrl.values.toList()..sort((a, b) => b.trust.compareTo(a.trust));
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sources = _unique;
+    return _Section(
+      label: '참고 출처',
+      labelEn: 'SOURCE INDEX',
+      trailing: Text('${sources.length}건', style: AppText.mono(size: 10, color: AppColors.ink400)),
+      child: sources.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text('인용된 출처가 없습니다.',
+                  style: AppText.sans(size: 13, color: AppColors.ink400)),
+            )
+          : Column(
+              children: [
+                for (var i = 0; i < sources.length; i++) ...[
+                  if (i > 0) const Divider(height: 1),
+                  _SourceRow(index: i + 1, source: sources[i]),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _SourceRow extends StatelessWidget {
+  const _SourceRow({required this.index, required this.source});
+  final int index;
+  final Source source;
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (source.trust * 100).round();
+    final tColor = source.trust >= 0.7
+        ? AppColors.verified
+        : source.trust >= 0.4
+            ? AppColors.unverifiable
+            : AppColors.ink400;
+    return InkWell(
+      onTap: () => launchUrl(Uri.parse(source.url), mode: LaunchMode.externalApplication),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('[$index]', style: AppText.mono(size: 11, color: AppColors.accent, weight: FontWeight.w700)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(source.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.sans(size: 13, weight: FontWeight.w700, color: AppColors.ink900)),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('신뢰 $pct',
+                          style: AppText.mono(size: 10, color: tColor, weight: FontWeight.w700)),
+                    ],
+                  ),
+                  if (source.snippet.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(source.snippet,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.sans(size: 12, color: AppColors.ink500, height: 1.45)),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(source.url,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.mono(size: 10, color: AppColors.accent)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.open_in_new, size: 14, color: AppColors.ink300),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Methodology
+// ─────────────────────────────────────────────────────────────────────────
+
+class _Methodology extends StatelessWidget {
+  const _Methodology({required this.result});
+  final FactCheckResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = [
+      ('주장 추출', '입력 텍스트를 검증 가능한 개별 사실 주장 단위로 분리합니다.'),
+      ('교차 검색', '주장마다 검색어를 생성해 웹의 여러 출처에서 근거를 수집합니다.'),
+      ('대조 판정', '수집된 근거와 대조해 확인·반박·검증불가로 판정하고 신뢰도를 매깁니다.'),
+    ];
+    final sourceCount = result.claims.fold<int>(0, (sum, c) => sum + c.sources.length);
+    return _Section(
+      label: '검증 방법',
+      labelEn: 'METHODOLOGY',
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < steps.length; i++) ...[
+              if (i > 0) const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.accentSoft,
+                      borderRadius: BorderRadius.circular(AppRadius.small),
+                    ),
+                    child: Text('${i + 1}',
+                        style: AppText.mono(size: 11, color: AppColors.accent, weight: FontWeight.w700)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(steps[i].$1,
+                            style: AppText.sans(size: 13, weight: FontWeight.w700, color: AppColors.ink900)),
+                        const SizedBox(height: 2),
+                        Text(steps[i].$2,
+                            style: AppText.sans(size: 12, color: AppColors.ink500, height: 1.45)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            Text(
+              '분석 정보: 주장 ${result.summary.total}건 · 수집 출처 $sourceCount건 · '
+              '${result.cached ? '캐시된 결과' : '실시간 분석'}',
+              style: AppText.mono(size: 10, color: AppColors.ink400),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Shared section shell with KO + EN labels and an accent spine.
+class _Section extends StatelessWidget {
+  const _Section({
+    required this.label,
+    required this.labelEn,
+    required this.child,
+    this.trailing,
+  });
+
+  final String label;
+  final String labelEn;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.ink200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+            decoration: const BoxDecoration(
+              color: AppColors.ink50,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(AppRadius.card),
+                topRight: Radius.circular(AppRadius.card),
+              ),
+              border: Border(bottom: BorderSide(color: AppColors.ink200)),
+            ),
+            child: Row(
+              children: [
+                Container(width: 3, height: 14, color: AppColors.accent),
+                const SizedBox(width: 8),
+                Text(label, style: AppText.sans(size: 13, weight: FontWeight.w800, color: AppColors.ink900)),
+                const SizedBox(width: 8),
+                Text(labelEn, style: AppText.overline(color: AppColors.ink400)),
+                const Spacer(),
+                if (trailing != null) trailing!,
+              ],
+            ),
+          ),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+String _shorten(String text, [int max = 24]) =>
+    text.length <= max ? text : '${text.substring(0, max)}…';
 
 class _Disclaimer extends StatelessWidget {
   const _Disclaimer();
