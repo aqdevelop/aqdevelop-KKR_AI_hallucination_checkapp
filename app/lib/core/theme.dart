@@ -1,102 +1,113 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'tokens.dart';
+
 ThemeData buildTheme() {
   final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF6366F1),
+    seedColor: AppColors.accent,
     brightness: Brightness.light,
-    surface: const Color(0xFFFAFAFB),
+    primary: AppColors.accent,
+    surface: AppColors.paper,
+    onSurface: AppColors.ink900,
   );
 
-  final korean = GoogleFonts.notoSansKrTextTheme();
-  final headline = GoogleFonts.notoSansKr(fontWeight: FontWeight.w800);
+  final serifDisplay = GoogleFonts.notoSerifKr(
+    fontWeight: FontWeight.w800,
+    color: AppColors.ink950,
+    letterSpacing: -0.4,
+  );
 
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
-    scaffoldBackgroundColor: scheme.surface,
-    textTheme: korean.copyWith(
-      headlineSmall: headline.copyWith(fontSize: 22, height: 1.3),
-      titleLarge: headline.copyWith(fontSize: 18),
-      titleMedium: GoogleFonts.notoSansKr(fontWeight: FontWeight.w700, fontSize: 15),
-      bodyLarge: GoogleFonts.notoSansKr(fontSize: 16, height: 1.7, color: const Color(0xFF1F2937)),
-      bodyMedium: GoogleFonts.notoSansKr(fontSize: 14, height: 1.55, color: const Color(0xFF374151)),
-      labelLarge: GoogleFonts.notoSansKr(fontWeight: FontWeight.w600, fontSize: 14),
+    scaffoldBackgroundColor: AppColors.paper,
+    textTheme: TextTheme(
+      // Serif — display & headings (authority)
+      displaySmall: serifDisplay.copyWith(fontSize: 30, height: 1.2),
+      headlineMedium: serifDisplay.copyWith(fontSize: 26, height: 1.2),
+      headlineSmall: serifDisplay.copyWith(fontSize: 22, height: 1.25),
+      titleLarge: GoogleFonts.notoSerifKr(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: AppColors.ink900,
+        letterSpacing: -0.2,
+      ),
+      // Sans — UI & body (legibility)
+      titleMedium: GoogleFonts.notoSansKr(
+        fontWeight: FontWeight.w700,
+        fontSize: 15,
+        color: AppColors.ink900,
+      ),
+      bodyLarge: GoogleFonts.notoSansKr(
+        fontSize: 16,
+        height: 1.75,
+        color: AppColors.ink800,
+      ),
+      bodyMedium: GoogleFonts.notoSansKr(
+        fontSize: 14,
+        height: 1.55,
+        color: AppColors.ink700,
+      ),
+      labelLarge: GoogleFonts.notoSansKr(
+        fontWeight: FontWeight.w600,
+        fontSize: 14,
+        color: AppColors.ink800,
+      ),
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: scheme.surface,
-      foregroundColor: scheme.onSurface,
+      backgroundColor: AppColors.paper,
+      foregroundColor: AppColors.ink900,
       surfaceTintColor: Colors.transparent,
       centerTitle: false,
       elevation: 0,
-      titleTextStyle: GoogleFonts.notoSansKr(
+      titleTextStyle: GoogleFonts.notoSerifKr(
         fontSize: 18,
         fontWeight: FontWeight.w700,
-        color: scheme.onSurface,
+        color: AppColors.ink900,
+        letterSpacing: -0.2,
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(54),
-        backgroundColor: scheme.primary,
+        minimumSize: const Size.fromHeight(52),
+        backgroundColor: AppColors.accent,
         foregroundColor: Colors.white,
-        textStyle: GoogleFonts.notoSansKr(fontSize: 16, fontWeight: FontWeight.w700),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: GoogleFonts.notoSansKr(fontSize: 15, fontWeight: FontWeight.w700),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(50),
+        foregroundColor: AppColors.ink800,
+        side: const BorderSide(color: AppColors.ink300),
+        textStyle: GoogleFonts.notoSansKr(fontSize: 15, fontWeight: FontWeight.w700),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.accent,
+        textStyle: GoogleFonts.notoSansKr(fontSize: 14, fontWeight: FontWeight.w600),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
-      hintStyle: GoogleFonts.notoSansKr(color: const Color(0xFF9CA3AF), fontSize: 15),
+      hintStyle: GoogleFonts.notoSansKr(color: AppColors.ink400, fontSize: 15),
     ),
-    dividerTheme: const DividerThemeData(color: Color(0xFFE5E7EB), thickness: 1),
+    dividerTheme: const DividerThemeData(color: AppColors.ink200, thickness: 1),
   );
 }
 
+/// Backwards-compatible verdict palette. Screens not yet migrated to the
+/// new [Verdict] helper still reference this; values now point at the
+/// muted Forensic tones.
 class VerdictColors {
-  // softer, more refined palette than pure red/green/yellow
-  static const supported = Color(0xFF059669);    // emerald-600
-  static const refuted = Color(0xFFE11D48);      // rose-600
-  static const unverifiable = Color(0xFFD97706); // amber-600
+  static const supported = AppColors.verified;
+  static const refuted = AppColors.disputed;
+  static const unverifiable = AppColors.unverifiable;
 
-  static const _supportedBg = Color(0xFFD1FAE5); // emerald-100
-  static const _refutedBg = Color(0xFFFEE2E2);   // rose-100
-  static const _unverifiableBg = Color(0xFFFEF3C7); // amber-100
-
-  static Color background(String verdict) {
-    switch (verdict) {
-      case 'supported':
-        return _supportedBg;
-      case 'refuted':
-        return _refutedBg;
-      case 'unverifiable':
-        return _unverifiableBg;
-      default:
-        return Colors.transparent;
-    }
-  }
-
-  static Color foreground(String verdict) {
-    switch (verdict) {
-      case 'supported':
-        return supported;
-      case 'refuted':
-        return refuted;
-      case 'unverifiable':
-        return unverifiable;
-      default:
-        return const Color(0xFF1F2937);
-    }
-  }
-
-  static String label(String verdict) {
-    switch (verdict) {
-      case 'supported':
-        return '확인됨';
-      case 'refuted':
-        return '의심';
-      case 'unverifiable':
-        return '불확실';
-      default:
-        return verdict;
-    }
-  }
+  static Color background(String verdict) => Verdict.bg(verdict);
+  static Color foreground(String verdict) => Verdict.fg(verdict);
+  static String label(String verdict) => Verdict.label(verdict);
 }

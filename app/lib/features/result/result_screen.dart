@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/theme.dart';
+import '../../core/tokens.dart';
 import '../../data/models/models.dart';
 import '../../state/providers.dart';
 import '../../widgets/highlighted_text.dart';
@@ -19,12 +19,12 @@ class ResultScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('검사 결과'),
+        title: const Text('검증 리포트'),
         actions: [
           if (edited != null)
             IconButton(
-              tooltip: '수정본 복사',
-              icon: const Icon(Icons.copy_all_outlined),
+              tooltip: '교정본 복사',
+              icon: const Icon(Icons.content_copy_outlined, size: 20),
               onPressed: () => _copy(context, edited.currentText),
             ),
         ],
@@ -49,12 +49,12 @@ class ResultScreen extends ConsumerWidget {
 
   void _copy(BuildContext context, String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('수정본을 클립보드에 복사했어요'),
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('교정본을 클립보드에 복사했어요'),
         duration: Duration(seconds: 2),
-      ),
-    );
+      ));
   }
 }
 
@@ -64,42 +64,38 @@ class _ResultBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Column(
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
       children: [
-        _SummaryCard(summary: edited.base.summary),
-        if (edited.fixableCount > 0)
+        _ReportHeader(result: edited.base),
+        if (edited.fixableCount > 0) ...[
+          const SizedBox(height: 12),
           _FixActionBar(
             pending: edited.pendingFixCount,
             applied: edited.appliedCount,
             onApplyAll: () => _applyAll(context, ref),
             onUndoAll: () => _undoAll(context, ref),
           ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _OriginalPanel(
-                  text: edited.base.originalText,
-                  claims: edited.originalClaims,
-                  hasEdits: edited.hasAnyEdits,
-                  onTapClaim: (c) => _openClaim(context, ref, c),
-                ),
-                if (edited.hasAnyEdits) ...[
-                  const SizedBox(height: 16),
-                  _CorrectedPanel(
-                    text: edited.currentText,
-                    claims: edited.appliedClaimsInCurrent,
-                    appliedCount: edited.appliedCount,
-                    onTapClaim: (c) => _openClaim(context, ref, c),
-                    onCopy: () => _copyText(context, edited.currentText),
-                  ),
-                ],
-              ],
-            ),
-          ),
+        ],
+        const SizedBox(height: 16),
+        _OriginalPanel(
+          text: edited.base.originalText,
+          claims: edited.originalClaims,
+          hasEdits: edited.hasAnyEdits,
+          onTapClaim: (c) => _openClaim(context, ref, c),
         ),
+        if (edited.hasAnyEdits) ...[
+          const SizedBox(height: 14),
+          _CorrectedPanel(
+            text: edited.currentText,
+            claims: edited.appliedClaimsInCurrent,
+            appliedCount: edited.appliedCount,
+            onTapClaim: (c) => _openClaim(context, ref, c),
+            onCopy: () => _copyText(context, edited.currentText),
+          ),
+        ],
+        const SizedBox(height: 20),
+        const _Disclaimer(),
       ],
     );
   }
@@ -108,12 +104,10 @@ class _ResultBody extends ConsumerWidget {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text('수정본을 클립보드에 복사했어요'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      ..showSnackBar(const SnackBar(
+        content: Text('교정본을 클립보드에 복사했어요'),
+        duration: Duration(seconds: 2),
+      ));
   }
 
   void _openClaim(BuildContext context, WidgetRef ref, Claim claim) {
@@ -121,9 +115,9 @@ class _ResultBody extends ConsumerWidget {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: AppColors.paper,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (sheetCtx) => Consumer(builder: (_, sheetRef, __) {
         final live = sheetRef.watch(editedResultProvider);
@@ -142,18 +136,16 @@ class _ResultBody extends ConsumerWidget {
   }
 
   void _showApplied(BuildContext context, WidgetRef ref, String claimId) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: const Text('수정이 적용됐어요'),
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: const Text('교정이 적용됐어요'),
         duration: const Duration(seconds: 3),
         action: SnackBarAction(
           label: '되돌리기',
           onPressed: () => ref.read(editedResultProvider.notifier).undoFix(claimId),
         ),
-      ),
-    );
+      ));
   }
 
   void _applyAll(BuildContext context, WidgetRef ref) {
@@ -162,18 +154,16 @@ class _ResultBody extends ConsumerWidget {
     final after = ref.read(editedResultProvider)?.appliedFixIds ?? const <String>{};
     final added = after.length - before.length;
     if (added <= 0) return;
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text('AI 추천 수정 $added건을 적용했어요'),
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('교정 $added건을 적용했어요'),
         duration: const Duration(seconds: 3),
         action: SnackBarAction(
           label: '모두 되돌리기',
           onPressed: () => ref.read(editedResultProvider.notifier).undoAll(),
         ),
-      ),
-    );
+      ));
   }
 
   void _undoAll(BuildContext context, WidgetRef ref) {
@@ -181,11 +171,285 @@ class _ResultBody extends ConsumerWidget {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(
-        content: Text('원본으로 되돌렸어요'),
+        content: Text('원문으로 되돌렸어요'),
         duration: Duration(seconds: 2),
       ));
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Report header
+// ─────────────────────────────────────────────────────────────────────────
+
+class _ReportHeader extends StatelessWidget {
+  const _ReportHeader({required this.result});
+  final FactCheckResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = result.summary;
+    final reportId =
+        result.originalText.hashCode.toUnsigned(32).toRadixString(16).toUpperCase().padLeft(8, '0');
+    final now = DateTime.now();
+    final date =
+        '${now.year}.${now.month.toString().padLeft(2, '0')}.${now.day.toString().padLeft(2, '0')}';
+    final meta =
+        'RPT-$reportId · $date · 주장 ${s.total}건 · ${result.cached ? '캐시' : '실시간'}';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.ink200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('VERIFICATION REPORT', style: AppText.overline(color: AppColors.accent)),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.verifiedSoft,
+                        borderRadius: BorderRadius.circular(AppRadius.small),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 5,
+                            height: 5,
+                            decoration: const BoxDecoration(
+                                color: AppColors.verified, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 5),
+                          Text('분석 완료',
+                              style: AppText.mono(
+                                  size: 10, color: AppColors.verified, weight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text('사실성 검증 결과',
+                    style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 8),
+                Text(meta, style: AppText.mono()),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            child: Column(
+              children: [
+                _TrustMeter(score: s.trustScore),
+                const SizedBox(height: 16),
+                _VerdictBar(summary: s),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                        child: _VerdictStat(
+                            count: s.supported, label: '확인', color: AppColors.verified)),
+                    _statDivider(),
+                    Expanded(
+                        child: _VerdictStat(
+                            count: s.refuted, label: '반박', color: AppColors.disputed)),
+                    _statDivider(),
+                    Expanded(
+                        child: _VerdictStat(
+                            count: s.unverifiable, label: '검증불가', color: AppColors.unverifiable)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statDivider() =>
+      Container(width: 1, height: 30, color: AppColors.ink200);
+}
+
+class _TrustMeter extends StatelessWidget {
+  const _TrustMeter({required this.score});
+  final double score;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = score.clamp(0, 100).toDouble();
+    final color = v >= 70
+        ? AppColors.verified
+        : v >= 40
+            ? AppColors.unverifiable
+            : AppColors.disputed;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text('신뢰도 지수', style: AppText.sans(size: 13, color: AppColors.ink600, weight: FontWeight.w600)),
+            const Spacer(),
+            Text(v.toStringAsFixed(0),
+                style: AppText.serif(size: 28, weight: FontWeight.w800, color: color, height: 1)),
+            const SizedBox(width: 2),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text('/100', style: AppText.mono(size: 11, color: AppColors.ink400)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: Stack(
+            children: [
+              Container(height: 6, color: AppColors.ink100),
+              FractionallySizedBox(
+                widthFactor: v / 100,
+                child: Container(height: 6, color: color),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VerdictBar extends StatelessWidget {
+  const _VerdictBar({required this.summary});
+  final Summary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final segments = <(int, Color)>[
+      (summary.supported, AppColors.verified),
+      (summary.unverifiable, AppColors.unverifiable),
+      (summary.refuted, AppColors.disputed),
+    ];
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(2),
+      child: Row(
+        children: [
+          for (final (count, color) in segments)
+            if (count > 0)
+              Expanded(
+                flex: count,
+                child: Container(height: 8, color: color),
+              ),
+          if (summary.total == 0)
+            Expanded(child: Container(height: 8, color: AppColors.ink200)),
+        ],
+      ),
+    );
+  }
+}
+
+class _VerdictStat extends StatelessWidget {
+  const _VerdictStat({required this.count, required this.label, required this.color});
+  final int count;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text('$count',
+            style: AppText.serif(size: 22, weight: FontWeight.w800, color: color, height: 1)),
+        const SizedBox(height: 4),
+        Text(label, style: AppText.sans(size: 11, color: AppColors.ink500, weight: FontWeight.w600)),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fix action bar
+// ─────────────────────────────────────────────────────────────────────────
+
+class _FixActionBar extends StatelessWidget {
+  const _FixActionBar({
+    required this.pending,
+    required this.applied,
+    required this.onApplyAll,
+    required this.onUndoAll,
+  });
+
+  final int pending;
+  final int applied;
+  final VoidCallback onApplyAll;
+  final VoidCallback onUndoAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 11, 10, 11),
+      decoration: BoxDecoration(
+        color: AppColors.accentSoft,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.auto_fix_high, size: 16, color: AppColors.accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              applied > 0
+                  ? '교정 $applied건 적용됨${pending > 0 ? ' · 남은 제안 $pending건' : ''}'
+                  : 'AI 교정 제안 $pending건',
+              style: AppText.sans(size: 12.5, color: AppColors.accent, weight: FontWeight.w700),
+            ),
+          ),
+          if (applied > 0)
+            TextButton(
+              onPressed: onUndoAll,
+              style: TextButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                foregroundColor: AppColors.ink500,
+              ),
+              child: Text('원문', style: AppText.sans(size: 12, weight: FontWeight.w700, color: AppColors.ink500)),
+            ),
+          if (pending > 0) ...[
+            const SizedBox(width: 4),
+            FilledButton(
+              onPressed: onApplyAll,
+              style: FilledButton.styleFrom(
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
+                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              child: const Text('모두 적용'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Text panels
+// ─────────────────────────────────────────────────────────────────────────
 
 class _OriginalPanel extends StatelessWidget {
   const _OriginalPanel({
@@ -202,58 +466,16 @@ class _OriginalPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF3F4F6),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Text(
-                    '원본',
-                    style: TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-                if (hasEdits) ...[
-                  const SizedBox(width: 8),
-                  const Text(
-                    '아래에 수정된 글이 따로 있어요',
-                    style: TextStyle(
-                      color: Color(0xFF9CA3AF),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: HighlightedText(
-              text: text,
-              claims: claims,
-              onTapClaim: onTapClaim,
-              mode: HighlightMode.original,
-            ),
-          ),
-        ],
+    return _DocPanel(
+      label: '원문',
+      labelEn: 'SUBMITTED TEXT',
+      accent: AppColors.ink400,
+      note: hasEdits ? '교정본 아래 참조' : null,
+      child: HighlightedText(
+        text: text,
+        claims: claims,
+        onTapClaim: onTapClaim,
+        mode: HighlightMode.original,
       ),
     );
   }
@@ -276,110 +498,89 @@ class _CorrectedPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    return _DocPanel(
+      label: '교정본',
+      labelEn: 'REVISED TEXT',
+      accent: AppColors.accent,
+      emphasized: true,
+      note: '$appliedCount건 반영',
+      trailing: IconButton(
+        tooltip: '복사',
+        icon: const Icon(Icons.content_copy_outlined, size: 17),
+        color: AppColors.accent,
+        visualDensity: VisualDensity.compact,
+        onPressed: onCopy,
+      ),
+      child: HighlightedText(
+        text: text,
+        claims: claims,
+        onTapClaim: onTapClaim,
+        mode: HighlightMode.corrected,
+      ),
+    );
+  }
+}
+
+class _DocPanel extends StatelessWidget {
+  const _DocPanel({
+    required this.label,
+    required this.labelEn,
+    required this.accent,
+    required this.child,
+    this.note,
+    this.trailing,
+    this.emphasized = false,
+  });
+
+  final String label;
+  final String labelEn;
+  final Color accent;
+  final Widget child;
+  final String? note;
+  final Widget? trailing;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            scheme.primary.withValues(alpha: 0.06),
-            scheme.primary.withValues(alpha: 0.02),
-          ],
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(
+          color: emphasized ? accent.withValues(alpha: 0.40) : AppColors.ink200,
+          width: emphasized ? 1.4 : 1,
         ),
-        border: Border.all(color: scheme.primary.withValues(alpha: 0.30)),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.primary.withValues(alpha: 0.10),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
           Container(
-            padding: const EdgeInsets.fromLTRB(18, 14, 10, 14),
+            padding: EdgeInsets.fromLTRB(16, 11, trailing != null ? 6 : 16, 11),
             decoration: BoxDecoration(
+              color: emphasized ? accent.withValues(alpha: 0.05) : AppColors.ink50,
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
+                topLeft: Radius.circular(AppRadius.card),
+                topRight: Radius.circular(AppRadius.card),
               ),
-              color: scheme.primary.withValues(alpha: 0.10),
-              border: Border(
-                bottom: BorderSide(
-                  color: scheme.primary.withValues(alpha: 0.20),
-                ),
-              ),
+              border: const Border(bottom: BorderSide(color: AppColors.ink200)),
             ),
             child: Row(
               children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: scheme.primary,
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: scheme.primary.withValues(alpha: 0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(Icons.auto_fix_high,
-                      color: Colors.white, size: 16),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'AI 수정 적용된 글',
-                        style: TextStyle(
-                          color: scheme.primary,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14.5,
-                          height: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '$appliedCount건의 추천 수정을 반영한 최종 글이에요',
-                        style: TextStyle(
-                          color: scheme.primary.withValues(alpha: 0.75),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: '복사',
-                  icon: const Icon(Icons.copy_all_outlined, size: 18),
-                  color: scheme.primary,
-                  onPressed: onCopy,
-                ),
+                Container(width: 3, height: 14, color: accent),
+                const SizedBox(width: 8),
+                Text(label, style: AppText.sans(size: 13, weight: FontWeight.w800, color: AppColors.ink900)),
+                const SizedBox(width: 8),
+                Text(labelEn, style: AppText.overline(color: AppColors.ink400)),
+                const Spacer(),
+                if (note != null)
+                  Text(note!, style: AppText.mono(size: 10, color: accent, weight: FontWeight.w600)),
+                if (trailing != null) trailing!,
               ],
             ),
           ),
-          // Body
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            child: HighlightedText(
-              text: text,
-              claims: claims,
-              onTapClaim: onTapClaim,
-              mode: HighlightMode.corrected,
-            ),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            child: child,
           ),
         ],
       ),
@@ -387,228 +588,28 @@ class _CorrectedPanel extends StatelessWidget {
   }
 }
 
-class _FixActionBar extends StatelessWidget {
-  const _FixActionBar({
-    required this.pending,
-    required this.applied,
-    required this.onApplyAll,
-    required this.onUndoAll,
-  });
-
-  final int pending;
-  final int applied;
-  final VoidCallback onApplyAll;
-  final VoidCallback onUndoAll;
+class _Disclaimer extends StatelessWidget {
+  const _Disclaimer();
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: scheme.primary.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: scheme.primary.withValues(alpha: 0.18)),
+        color: AppColors.ink50,
+        borderRadius: BorderRadius.circular(AppRadius.small),
+        border: Border.all(color: AppColors.ink200),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.auto_fix_high, size: 16, color: scheme.primary),
+          const Icon(Icons.info_outline, size: 14, color: AppColors.ink400),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              applied > 0
-                  ? '수정 $applied건 적용됨${pending > 0 ? ' · 남은 추천 $pending건' : ''}'
-                  : 'AI 추천 수정 $pending건 있어요',
-              style: TextStyle(
-                color: scheme.primary,
-                fontWeight: FontWeight.w700,
-                fontSize: 12.5,
-              ),
-            ),
-          ),
-          if (applied > 0)
-            TextButton(
-              onPressed: onUndoAll,
-              style: TextButton.styleFrom(
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                foregroundColor: const Color(0xFF6B7280),
-                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-              ),
-              child: const Text('원본'),
-            ),
-          if (pending > 0) ...[
-            const SizedBox(width: 4),
-            FilledButton(
-              onPressed: onApplyAll,
-              style: FilledButton.styleFrom(
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-              ),
-              child: const Text('모두 적용'),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.summary});
-  final Summary summary;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            scheme.primary.withValues(alpha: 0.08),
-            scheme.primary.withValues(alpha: 0.02),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: scheme.primary.withValues(alpha: 0.15)),
-      ),
-      child: Row(
-        children: [
-          _ScoreCircle(score: summary.trustScore),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '신뢰 점수',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF6B7280),
-                        fontSize: 12,
-                      ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '주장 ${summary.total}개 분석됨',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    _Pill(
-                      count: summary.supported,
-                      label: '확인',
-                      color: VerdictColors.supported,
-                    ),
-                    _Pill(
-                      count: summary.refuted,
-                      label: '의심',
-                      color: VerdictColors.refuted,
-                    ),
-                    _Pill(
-                      count: summary.unverifiable,
-                      label: '불확실',
-                      color: VerdictColors.unverifiable,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ScoreCircle extends StatelessWidget {
-  const _ScoreCircle({required this.score});
-  final double score;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: 76,
-      height: 76,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: scheme.primary,
-        boxShadow: [
-          BoxShadow(
-            color: scheme.primary.withValues(alpha: 0.25),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            score.toStringAsFixed(0),
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              height: 1,
-            ),
-          ),
-          const SizedBox(height: 2),
-          const Text(
-            '/ 100',
-            style: TextStyle(fontSize: 10, color: Colors.white70),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.count, required this.label, required this.color});
-  final int count;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.30)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            '$label $count',
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
+              '본 리포트는 AI가 자동 생성한 참고 자료이며 법적 효력이 없습니다. '
+              '중요한 사안은 반드시 원출처를 직접 확인하시기 바랍니다.',
+              style: AppText.sans(size: 11, color: AppColors.ink500, height: 1.5),
             ),
           ),
         ],
