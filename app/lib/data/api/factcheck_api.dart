@@ -19,7 +19,7 @@ class FactCheckApi {
       : _dio = Dio(BaseOptions(
           baseUrl: baseUrl ?? _defaultBaseUrl(),
           connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 60),
+          receiveTimeout: const Duration(seconds: 180),
           headers: {'Content-Type': 'application/json'},
         ));
 
