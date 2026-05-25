@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     search_results_per_query: int = 6
     cache_ttl_days: int = 30
 
+    # Evidence grounding
+    enable_wikipedia: bool = True       # pull authoritative Wikipedia extracts (no key)
+    enable_content_fetch: bool = True   # fetch real page body, not just snippets
+    max_sources_to_verify: int = 5      # how many top sources to read per claim
+    max_evidence_chars: int = 1800      # chars of body text fed to the verifier per source
+
     cors_origins: str = "*"
 
 

@@ -39,16 +39,9 @@ async def run(req: FactCheckRequest) -> FactCheckResponse:
 async def _verify_one(claim: Claim, language: str) -> None:
     queries = await query_gen.generate(claim.text)
     results = await asyncio.gather(*[search.search(q, language=language) for q in queries])
-    sources = []
-    seen: set[str] = set()
-    for batch in results:
-        for s in batch:
-            host = s.url.split("/")[2] if "://" in s.url else s.url
-            if host in seen:
-                continue
-            seen.add(host)
-            sources.append(s)
-    sources = sources[: settings.search_results_per_query * 2]
+    merged = [s for batch in results for s in batch]
+    # URL-level dedupe (keeps multiple good pages per host instead of one).
+    sources = search.dedupe_sources(merged, per_host=2)[: settings.search_results_per_query * 2]
     verdict, confidence, used = await verifier.verify(claim, sources)
     claim.verdict = verdict
     claim.confidence = confidence

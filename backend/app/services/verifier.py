@@ -2,9 +2,9 @@ import asyncio
 import hashlib
 
 from app.core.config import settings
-from app.core.prompts import VERIFY_CLAIM_SYSTEM
+from app.core.prompts import VERIFY_CLAIM_HOLISTIC_SYSTEM
 from app.models.schemas import Claim, Source, Verdict
-from app.services import llm
+from app.services import content_fetch, llm
 
 
 async def verify(claim: Claim, sources: list[Source]) -> tuple[Verdict, float, list[Source]]:
@@ -14,45 +14,71 @@ async def verify(claim: Claim, sources: list[Source]) -> tuple[Verdict, float, l
     if settings.mock_mode:
         return _mock_verdict(claim, sources)
 
-    labels = await asyncio.gather(*[_classify(claim.text, s) for s in sources])
+    # Read the top sources by trust. One grounded LLM call per claim (cheaper
+    # on quota than the old per-snippet voting, and far more accurate because
+    # it reasons over real page bodies instead of 1-2 sentence snippets).
+    top = sorted(sources, key=lambda s: s.trust, reverse=True)[: settings.max_sources_to_verify]
 
-    entail = sum(s.trust for label, s in zip(labels, sources) if label == "entail")
-    contradict = sum(s.trust for label, s in zip(labels, sources) if label == "contradict")
-    distinct_entail = len({s.url for label, s in zip(labels, sources) if label == "entail"})
-
-    verdict: Verdict
-    if contradict >= 0.5 and contradict > entail * 0.8:
-        verdict = "refuted"
-    elif entail >= 0.7 and distinct_entail >= 1 and contradict < entail * 0.5:
-        verdict = "supported"
+    if settings.enable_content_fetch:
+        bodies = await asyncio.gather(
+            *[content_fetch.fetch_text(s.url, settings.max_evidence_chars) for s in top]
+        )
     else:
-        verdict = "unverifiable"
+        bodies = ["" for _ in top]
 
-    total = entail + contradict
-    confidence = max(entail, contradict) / total if total > 0 else 0.0
-    return verdict, round(confidence, 2), sources
+    blocks: list[str] = []
+    for i, (s, body) in enumerate(zip(top, bodies), 1):
+        text = (body or s.snippet or "").strip()[: settings.max_evidence_chars]
+        if not text:
+            text = "(본문을 가져오지 못함)"
+        blocks.append(f"[{i}] 제목: {s.title}\nURL: {s.url}\n내용: {text}")
 
-
-async def _classify(claim_text: str, source: Source) -> str:
     user = (
-        f"Claim: {claim_text}\n\n"
-        f"Snippet (from {source.url}):\n{source.snippet}\n"
+        f"검증할 주장:\n{claim.text}\n\n"
+        f"수집된 근거 ({len(blocks)}건):\n" + "\n\n".join(blocks)
     )
+
     try:
         data = await llm.call_json(
             model=settings.verifier_model,
-            system=VERIFY_CLAIM_SYSTEM,
+            system=VERIFY_CLAIM_HOLISTIC_SYSTEM,
             user=user,
-            max_tokens=512,
+            max_tokens=1024,
         )
-        label = data.get("label", "neutral")
-        rationale = data.get("rationale", "")
-        final = label if label in ("entail", "contradict", "neutral") else "neutral"
-        print(f"[VERIFY] {final:10} | claim='{claim_text[:40]}' | rationale='{rationale[:80]}'", flush=True)
-        return final
     except Exception as e:
-        print(f"[VERIFY] ERROR(neutral) | claim='{claim_text[:40]}' | {type(e).__name__}: {str(e)[:120]}", flush=True)
-        return "neutral"
+        print(
+            f"[VERIFY] ERROR(unverifiable) | claim='{claim.text[:40]}' | "
+            f"{type(e).__name__}: {str(e)[:120]}",
+            flush=True,
+        )
+        return "unverifiable", 0.0, top[:3]
+
+    verdict = data.get("verdict")
+    if verdict not in ("supported", "refuted", "unverifiable"):
+        verdict = "unverifiable"
+
+    try:
+        confidence = max(0.0, min(1.0, float(data.get("confidence", 0.0))))
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    cited = data.get("cited_sources") or []
+    used: list[Source] = []
+    for idx in cited:
+        if isinstance(idx, int) and 1 <= idx <= len(top):
+            used.append(top[idx - 1])
+    if not used:
+        # No explicit citation — keep the strongest sources so the UI still
+        # shows something, but this usually pairs with an "unverifiable".
+        used = top[:3]
+
+    quote = str(data.get("evidence_quote", ""))[:120]
+    print(
+        f"[VERIFY] {verdict:12} conf={confidence:.2f} cited={cited} | "
+        f"claim='{claim.text[:40]}' | quote='{quote}'",
+        flush=True,
+    )
+    return verdict, round(confidence, 2), used
 
 
 def _mock_verdict(claim: Claim, sources: list[Source]) -> tuple[Verdict, float, list[Source]]:

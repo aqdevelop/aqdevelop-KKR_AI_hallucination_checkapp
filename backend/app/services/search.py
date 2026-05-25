@@ -1,4 +1,5 @@
 import re
+from urllib.parse import quote, urlparse
 
 import httpx
 
@@ -10,6 +11,7 @@ from app.services import trust
 BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
 GOOGLE_URL = "https://www.googleapis.com/customsearch/v1"
 NAVER_URL = "https://openapi.naver.com/v1/search/webkr.json"
+_UA = "Mozilla/5.0 (compatible; FactLensBot/1.0; +https://factlens.app)"
 
 _HTML_TAG = re.compile(r"<[^>]+>")
 _HTML_ENTITY = {"&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'"}
@@ -28,25 +30,62 @@ async def search(query: str, language: str = "ko") -> list[Source]:
 
     results: list[Source] = []
 
+    # Wikipedia first — authoritative, free, no key. Best ground-truth source.
+    if settings.enable_wikipedia:
+        try:
+            results += await _wikipedia(query, language)
+        except Exception as e:
+            print(f"[SEARCH] wikipedia failed for '{query[:40]}': {type(e).__name__}: {str(e)[:120]}", flush=True)
+
     if language == "ko" and settings.naver_client_id and settings.naver_client_secret:
         try:
-            results = await _naver(query)
+            results += await _naver(query)
         except Exception as e:
             print(f"[SEARCH] naver failed for '{query[:40]}': {type(e).__name__}: {str(e)[:120]}", flush=True)
 
-    if len(results) < 3 and settings.brave_search_api_key:
+    web_count = sum(1 for s in results if "wikipedia.org" not in s.url)
+    if web_count < 3 and settings.brave_search_api_key:
         try:
             results += await _brave(query, language)
         except Exception as e:
             print(f"[SEARCH] brave failed for '{query[:40]}': {type(e).__name__}: {str(e)[:120]}", flush=True)
 
-    if language == "ko" and len(results) < 3 and settings.google_cse_api_key:
+    web_count = sum(1 for s in results if "wikipedia.org" not in s.url)
+    if web_count < 3 and settings.google_cse_api_key:
         try:
             results += await _google(query)
         except Exception as e:
             print(f"[SEARCH] google failed for '{query[:40]}': {type(e).__name__}: {str(e)[:120]}", flush=True)
 
-    return _dedupe(results)[: settings.search_results_per_query]
+    return dedupe_sources(results)[: settings.search_results_per_query * 2]
+
+
+async def _wikipedia(query: str, language: str) -> list[Source]:
+    lang = "ko" if language == "ko" else "en"
+    api = f"https://{lang}.wikipedia.org/w/api.php"
+    async with httpx.AsyncClient(timeout=8.0, headers={"User-Agent": _UA}) as client:
+        r = await client.get(api, params={
+            "action": "query",
+            "list": "search",
+            "srsearch": query,
+            "srlimit": 3,
+            "format": "json",
+        })
+        r.raise_for_status()
+        hits = r.json().get("query", {}).get("search", [])
+    out: list[Source] = []
+    for h in hits[:3]:
+        title = h.get("title", "")
+        if not title:
+            continue
+        url = f"https://{lang}.wikipedia.org/wiki/" + quote(title.replace(" ", "_"))
+        out.append(Source(
+            url=url,
+            title=f"{title} - 위키백과",
+            snippet=_clean_html(h.get("snippet", "")),
+            trust=trust.score(url),
+        ))
+    return out
 
 
 async def _naver(query: str) -> list[Source]:
@@ -131,14 +170,24 @@ async def _google(query: str) -> list[Source]:
     return out
 
 
-def _dedupe(sources: list[Source]) -> list[Source]:
-    seen: set[str] = set()
+def dedupe_sources(sources: list[Source], per_host: int = 2) -> list[Source]:
+    """Dedupe by exact URL, capping how many results one host may contribute.
+
+    Sorted by trust so the best page from each host survives the cap. Unlike
+    the old host-unique dedupe, this keeps multiple authoritative pages
+    (e.g. several Wikipedia articles) instead of throwing them away.
+    """
+    seen_urls: set[str] = set()
+    host_count: dict[str, int] = {}
     out: list[Source] = []
-    for s in sources:
-        host = s.url.split("/")[2] if "://" in s.url else s.url
-        if host in seen:
+    for s in sorted(sources, key=lambda x: x.trust, reverse=True):
+        if s.url in seen_urls:
             continue
-        seen.add(host)
+        host = (urlparse(s.url).hostname or s.url).lower()
+        if host_count.get(host, 0) >= per_host:
+            continue
+        seen_urls.add(s.url)
+        host_count[host] = host_count.get(host, 0) + 1
         out.append(s)
     return out
 
