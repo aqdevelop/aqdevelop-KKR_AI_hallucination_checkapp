@@ -35,10 +35,23 @@ Decomposition patterns (with Korean examples):
    STILL split them — they may have different actual actors that need separate
    verification.
 
+HIGHLIGHTING (critical for correctness):
+- Do NOT output character offsets/indices. Language models cannot count
+  character positions reliably, and wrong numbers break the UI highlight.
+- Instead, for each claim provide "source": the EXACT, character-for-character
+  substring copied from the input text that this claim is based on.
+  * Copy it verbatim — do not paraphrase, do not fix spacing or typos, do not
+    add or remove punctuation. It must appear in the input exactly as written.
+  * "text" is the (possibly normalized/atomic) claim used for verification;
+    "source" is the literal original phrase used to locate and highlight it.
+  * When one sentence is decomposed into several claims, each claim's "source"
+    should be the minimal contiguous phrase of the original it derives from.
+    They may overlap or repeat — that's fine.
+
 Output strict JSON only, matching this schema:
 {
   "claims": [
-    {"id": "c1", "text": "<atomic claim>", "span": {"start": <int>, "end": <int>}}
+    {"id": "c1", "text": "<atomic claim>", "source": "<verbatim substring from input>"}
   ]
 }
 """

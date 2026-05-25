@@ -4,18 +4,26 @@ from app.models.schemas import Claim, Span
 from app.services import llm
 
 
-def _find_span(text: str, claim_text: str, used: list[tuple[int, int]]) -> Span:
+def _find_span(text: str, needle: str, used: list[tuple[int, int]]) -> Span:
+    """Locate a verbatim substring in the source text.
+
+    Returns a zero-width span (start == end) when the needle can't be located,
+    so the UI simply draws no highlight instead of a misaligned one. Never
+    trusts model-provided character offsets — those are unreliable.
+    """
+    if not needle:
+        return Span(start=0, end=0)
     start = 0
     while True:
-        idx = text.find(claim_text, start)
+        idx = text.find(needle, start)
         if idx < 0:
             break
-        end = idx + len(claim_text)
+        end = idx + len(needle)
         if not any(s <= idx < e or s < end <= e for s, e in used):
             used.append((idx, end))
             return Span(start=idx, end=end)
         start = idx + 1
-    return Span(start=0, end=min(len(claim_text), len(text)))
+    return Span(start=0, end=0)
 
 
 async def extract(text: str) -> list[Claim]:
@@ -34,10 +42,11 @@ async def extract(text: str) -> list[Claim]:
         ct = raw.get("text", "").strip()
         if not ct:
             continue
-        span_raw = raw.get("span") or {}
-        if isinstance(span_raw.get("start"), int) and isinstance(span_raw.get("end"), int):
-            span = Span(start=span_raw["start"], end=span_raw["end"])
-        else:
+        # Locate via the verbatim "source" phrase (model copies it exactly);
+        # fall back to the claim text itself; never trust model char offsets.
+        source = (raw.get("source") or "").strip()
+        span = _find_span(text, source, used)
+        if span.start == span.end:
             span = _find_span(text, ct, used)
         claims.append(Claim(
             id=raw.get("id") or f"c{i+1}",
